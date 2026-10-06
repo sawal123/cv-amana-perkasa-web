@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -154,6 +155,14 @@ export default function ContentManager({ table, label, singular, titleField, fie
                         >
                           ↓
                         </button>
+                        {table === "projects" ? (
+                          <Link
+                            href={`/admin/projects/${row.id}/gallery`}
+                            className={`${btnSecondary} px-2.5 py-1 text-xs`}
+                          >
+                            Galeri
+                          </Link>
+                        ) : null}
                         <button
                           type="button"
                           disabled={busy}

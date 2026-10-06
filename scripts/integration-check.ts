@@ -13,15 +13,33 @@ import { eq } from "drizzle-orm";
 import { adminUsers } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import {
+  addGalleryImage,
+  deleteGalleryImage,
+  listGallery,
+  moveGalleryImage,
+  setGalleryCaption,
+} from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { loadContent } from "@/lib/content";
 import { MAX_UPLOAD_BYTES, listMedia, removeMedia, saveUpload, uploadDir } from "@/lib/media";
 import type { Payload } from "@/lib/admin/fields";
+import { SETTINGS_GROUPS } from "@/lib/types";
 
 let failures = 0;
 function check(name: string, condition: boolean, detail = "") {
   console.log(`${condition ? "  ok  " : "  FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
   if (!condition) failures += 1;
+}
+
+/** True when the call rejects — used for validators that throw by design. */
+async function rejects(action: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await action();
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -106,6 +124,135 @@ async function main() {
     .then(() => "no-error" as const, (error: Error) => error);
   check("unknown payload keys are rejected", smuggled instanceof Error, String(smuggled).slice(0, 60));
 
+  // ------------------------------------------------- project gallery + metadata
+  // A throwaway project keeps these checks from touching the seeded rows.
+  const PROJECT: Payload = {
+    title: "TEST PROJECT GALERI",
+    category: "Uji",
+    image: "/projects/corporate-conference.png",
+    description: "Dibuat oleh integration check.",
+    client: "Klien Uji",
+    location: "Jakarta",
+    year: "2024",
+    scope: "Event Management\nSound System",
+  };
+
+  await store.saveRow("projects", PROJECT);
+  const testProject = (await store.listRows("projects")).find((row) => row.values.title === "TEST PROJECT GALERI");
+  check("project with metadata is created", !!testProject);
+
+  const projectId = testProject?.id ?? 0;
+
+  if (testProject) {
+    check("metadata round-trips through MySQL", testProject.values.client === "Klien Uji" && testProject.values.year === "2024");
+    check("scope keeps its newlines", testProject.values.scope.includes("\n"));
+
+    // No gallery yet: this is the "0..N" lower bound and must not error.
+    const emptyGallery = await listGallery(projectId);
+    check("new project starts with an empty gallery", emptyGallery.length === 0);
+
+    const noGallery = await loadContent();
+    const plainProject = noGallery.projects.find((p) => p.id === projectId);
+    check("project without gallery renders with gallery: []", plainProject?.gallery.length === 0);
+
+    // One image.
+    const one = await addGalleryImage(projectId, "/projects/exhibition.png", "Satu");
+    check("first gallery image is accepted", one.ok, one.ok ? "" : one.error);
+    check("gallery holds exactly one image", (await listGallery(projectId)).length === 1);
+
+    // Several, and order must follow insertion.
+    await addGalleryImage(projectId, "/projects/live-concert.png", "Dua");
+    await addGalleryImage(projectId, "/projects/gala-dinner.png", "Tiga");
+    const three = await listGallery(projectId);
+    check("gallery holds three images", three.length === 3);
+    check("gallery order follows insertion", three.map((g) => g.caption).join(",") === "Satu,Dua,Tiga");
+    check("gallery positions are dense 1..n", three.every((g, i) => g.position === i + 1));
+    check("gallery reaches the public content", (await loadContent()).projects.find((p) => p.id === projectId)?.gallery.length === 3);
+
+    // Reorder.
+    await moveGalleryImage(three[2].id, -1);
+    const moved = await listGallery(projectId);
+    check("move up swaps gallery order", moved[1].caption === "Tiga" && moved[2].caption === "Dua");
+    check("positions stay dense after reorder", moved.every((g, i) => g.position === i + 1));
+
+    await moveGalleryImage(moved[0].id, -1);
+    check("move at the top edge is a no-op", (await listGallery(projectId))[0].caption === "Satu");
+
+    // Caption update.
+    await setGalleryCaption(moved[0].id, "  Caption Baru  ");
+    check("caption is trimmed and saved", (await listGallery(projectId))[0].caption === "Caption Baru");
+
+    // Gallery rows must not accept arbitrary paths or foreign projects.
+    const badPath = await addGalleryImage(projectId, "/uploads/../../etc/passwd", "x");
+    check("gallery rejects path traversal", !badPath.ok);
+    const external = await addGalleryImage(projectId, "https://evil.example/x.png", "x");
+    check("gallery rejects external URLs", !external.ok);
+    const orphan = await addGalleryImage(999_999, "/projects/exhibition.png", "x");
+    check("gallery rejects a non-existent project", !orphan.ok);
+
+    // The data layer caps the caption rather than storing an over-long value.
+    const longCaption = await addGalleryImage(projectId, "/projects/exhibition.png", "x".repeat(400));
+    check("over-long caption is capped at 255", longCaption.ok && (await listGallery(projectId)).some((g) => g.caption.length === 255));
+    const capped = (await listGallery(projectId)).find((g) => g.caption.length === 255);
+    if (capped) await deleteGalleryImage(capped.id);
+    check("gallery back to three after cleanup", (await listGallery(projectId)).length === 3);
+
+    // Remove one.
+    const beforeDelete = await listGallery(projectId);
+    await deleteGalleryImage(beforeDelete[0].id);
+    check("delete removes one gallery image", (await listGallery(projectId)).length === 2);
+
+    // Unpublished project must not leak its gallery to the public content.
+    await store.setPublished("projects", projectId, false);
+    const hidden = await loadContent();
+    check("unpublished project is absent from public content", !hidden.projects.some((p) => p.id === projectId));
+    await store.setPublished("projects", projectId, true);
+
+    // Deleting the project must cascade its gallery rows away.
+    await store.deleteRow("projects", projectId);
+    check("deleting a project removes it", !(await store.listRows("projects")).some((r) => r.id === projectId));
+    check("deleting a project cascades its gallery", (await listGallery(projectId)).length === 0);
+  }
+
+  // ---------------------------------------------------------- company legalities
+  const beforeLegalities = await store.listRows("company_legalities");
+  check("legalities start empty", beforeLegalities.length === 0);
+
+  const emptyContent = await loadContent();
+  check("empty legality list renders without error", Array.isArray(emptyContent.legalities) && emptyContent.legalities.length === 0);
+
+  await store.saveRow("company_legalities", { title: "NIB", value: "Terdaftar", description: "" });
+  await store.saveRow("company_legalities", { title: "NPWP", value: "Terdaftar", description: "Dokumen legal perusahaan" });
+  const twoLegalities = await store.listRows("company_legalities");
+  check("legalities can be created", twoLegalities.length === 2);
+
+  const nib = twoLegalities.find((row) => row.values.title === "NIB");
+  if (nib) {
+    await store.moveRow("company_legalities", nib.id, 1);
+    const reordered = await store.listRows("company_legalities");
+    check("legalities can be reordered", reordered[1].values.title === "NIB");
+
+    await store.setPublished("company_legalities", nib.id, false);
+    const hiddenLegality = await loadContent();
+    check("hidden legality is not published", !hiddenLegality.legalities.some((l) => l.title === "NIB"));
+    check("published legality still shows", hiddenLegality.legalities.some((l) => l.title === "NPWP"));
+
+    await store.setPublished("company_legalities", nib.id, true);
+    check("republished legality returns", (await loadContent()).legalities.some((l) => l.title === "NIB"));
+
+    // Edit.
+    await store.saveRow("company_legalities", { title: "NIB", value: "Terdaftar (diubah)", description: "" }, nib.id);
+    check("legality can be edited", (await store.listRows("company_legalities")).some((r) => r.values.value === "Terdaftar (diubah)"));
+  }
+
+  check("required legality title is enforced", await rejects(() => store.saveRow("company_legalities", { title: "", value: "x", description: "" })));
+
+  for (const row of await store.listRows("company_legalities")) {
+    await store.deleteRow("company_legalities", row.id);
+  }
+  check("legalities can be deleted back to empty", (await store.listRows("company_legalities")).length === 0);
+  check("empty legalities render again", (await loadContent()).legalities.length === 0);
+
   // ----------------------------------------------------------------- media
   const good = await saveUpload(fakeFile("logo.png", Buffer.concat([PNG_HEADER, Buffer.alloc(64)]), "image/png"), "Alt uji");
   check("valid PNG is accepted", good.ok, good.ok ? good.item.path : good.error);
@@ -167,7 +314,11 @@ async function main() {
 
   // ------------------------------------------------------- settings merge
   const content = await loadContent();
-  check("loadContent returns all nine setting groups", Object.keys(content.settings).length === 9);
+  check(
+    "loadContent returns every registered setting group",
+    Object.keys(content.settings).length === SETTINGS_GROUPS.length,
+    `${Object.keys(content.settings).length}/${SETTINGS_GROUPS.length}`,
+  );
   check("services came from MySQL", content.services.length > 0 && content.services.every((s) => typeof s.id === "number"));
   check("hero image is populated", content.settings.hero.image.length > 0);
   check("about stats survive the JSON round-trip", Array.isArray(content.settings.about.stats) && content.settings.about.stats.length === 3);

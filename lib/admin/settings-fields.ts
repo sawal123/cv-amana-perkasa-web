@@ -94,6 +94,15 @@ export const SETTING_TABS: SettingTab[] = [
     ],
   },
   {
+    group: "legalities",
+    label: "Seksi Legalitas",
+    fields: [
+      { name: "kicker", label: "Label kecil", type: "text", maxLength: TEXT },
+      { name: "heading", label: "Judul seksi", type: "textarea", maxLength: LONG },
+      { name: "description", label: "Deskripsi", type: "textarea", maxLength: LONG, help: "Opsional. Kosongkan untuk menyembunyikan paragraf ini." },
+    ],
+  },
+  {
     group: "contact",
     label: "Kontak",
     fields: [

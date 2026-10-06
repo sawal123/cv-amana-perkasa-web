@@ -3,15 +3,18 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { adminUsers, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { authSecretReady, createSession, destroySession, requireAdmin, verifyPassword } from "@/lib/auth";
-import { TABLES, type ContentTable, type Payload } from "@/lib/admin/fields";
+import { SAFE_IMAGE_PATH, TABLES, type ContentTable, type Payload } from "@/lib/admin/fields";
 import {
   SETTINGS_SCHEMA_BY_GROUP,
   isSettingsGroup,
   tabFor,
 } from "@/lib/admin/settings-fields";
+import * as gallery from "@/lib/admin/gallery";
+import { MAX_CAPTION } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { MAX_UPLOAD_BYTES, removeMedia, saveUpload, setMediaAlt } from "@/lib/media";
 
@@ -237,6 +240,99 @@ export async function updateMediaAltAction(id: number, alt: string): Promise<Act
   await requireAdmin();
   try {
     await setMediaAlt(id, alt);
+    revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+// --------------------------------------------------------------- gallery
+
+/**
+ * Gallery mutations all run through requireAdmin() like every other admin write,
+ * and every id is validated as a positive integer before it reaches SQL, so a
+ * request cannot address an arbitrary project or gallery row.
+ */
+const positiveId = z.number().int().positive();
+const captionSchema = z.string().trim().max(MAX_CAPTION).default("");
+const imagePathSchema = z.string().trim().regex(SAFE_IMAGE_PATH);
+
+function notFoundResult(what: string): ActionState {
+  return { ok: false, message: `${what} tidak ditemukan.` };
+}
+
+export async function addGalleryImageAction(
+  projectId: number,
+  image: string,
+  caption: string,
+): Promise<ActionState> {
+  await requireAdmin();
+
+  const id = positiveId.safeParse(projectId);
+  if (!id.success) return notFoundResult("Project");
+
+  const path = imagePathSchema.safeParse(image);
+  if (!path.success) return { ok: false, message: "Pilih gambar dari pustaka media." };
+
+  const text = captionSchema.safeParse(caption);
+  if (!text.success) return { ok: false, message: `Caption maksimal ${MAX_CAPTION} karakter.` };
+
+  try {
+    const result = await gallery.addGalleryImage(id.data, path.data, text.data);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function updateGalleryCaptionAction(id: number, caption: string): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Gambar");
+
+  const text = captionSchema.safeParse(caption);
+  if (!text.success) return { ok: false, message: `Caption maksimal ${MAX_CAPTION} karakter.` };
+
+  try {
+    const result = await gallery.setGalleryCaption(parsedId.data, text.data);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function deleteGalleryImageAction(id: number): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Gambar");
+
+  try {
+    const result = await gallery.deleteGalleryImage(parsedId.data);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function moveGalleryImageAction(id: number, delta: -1 | 1): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Gambar");
+  if (delta !== -1 && delta !== 1) return { ok: false, message: "Arah tidak valid." };
+
+  try {
+    const result = await gallery.moveGalleryImage(parsedId.data, delta);
+    if (!result.ok) return { ok: false, message: result.error };
     revalidateAll();
     return OK;
   } catch {

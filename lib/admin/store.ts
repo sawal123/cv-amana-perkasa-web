@@ -1,19 +1,20 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { MySqlTable } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { projects, services, teamMembers, workflowSteps } from "@/lib/db/schema";
+import { companyLegalities, projects, services, teamMembers, workflowSteps } from "@/lib/db/schema";
 import { TABLES, type ContentTable, type Payload } from "./fields";
 
 /**
- * All four content tables share id / position / published, so the union below
- * keeps those three columns concretely typed while the payload columns stay
- * driven by the registry in ./fields.
+ * Every content table shares id / position / published, so the union below keeps
+ * those three columns concretely typed while the payload columns stay driven by
+ * the registry in ./fields.
  */
 const HANDLES = {
   services,
   projects,
   team_members: teamMembers,
   workflow_steps: workflowSteps,
+  company_legalities: companyLegalities,
 } as const;
 
 export type AdminRow = {
@@ -49,6 +50,17 @@ export async function listRows(key: ContentTable): Promise<AdminRow[]> {
     .from(table as MySqlTable)
     .orderBy(asc(table.position), asc(table.id))) as unknown as RawRow[];
   return rows.map((row) => toAdminRow(key, row));
+}
+
+/** Single row by id, for pages that operate on one record (project gallery). */
+export async function findRow(key: ContentTable, id: number): Promise<AdminRow | null> {
+  const table = HANDLES[key];
+  const rows = (await getDb()
+    .select()
+    .from(table as MySqlTable)
+    .where(eq(table.id, id))
+    .limit(1)) as unknown as RawRow[];
+  return rows[0] ? toAdminRow(key, rows[0]) : null;
 }
 
 async function nextPosition(key: ContentTable): Promise<number> {

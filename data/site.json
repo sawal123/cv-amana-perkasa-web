@@ -45,6 +45,11 @@
       "heading": "Satu tim, satu kendali project.",
       "description": "Struktur ini dibuat sebagai template. Ganti nama dan jabatan sesuai struktur aktual CV AMANA PERKASA."
     },
+    "legalities": {
+      "kicker": "Legalitas Perusahaan",
+      "heading": "Perusahaan yang terdaftar dan siap mendukung kerja sama profesional.",
+      "description": ""
+    },
     "contact": {
       "kicker": "Let's Collaborate",
       "heading": "Punya event yang ingin diwujudkan?",
@@ -72,16 +77,16 @@
     { "id": 6, "no": "06", "title": "Community & Religious Event", "description": "Dukungan pelaksanaan kegiatan komunitas dan keagamaan dengan kebutuhan yang fleksibel." }
   ],
   "projects": [
-    { "id": 1, "title": "Corporate Conference", "category": "Corporate Event", "image": "/projects/corporate-conference.png", "description": "Konsep ballroom modern dengan stage, LED screen, registration, dan area networking." },
-    { "id": 2, "title": "Wedding Reception", "category": "Social Event", "image": "/projects/wedding-reception.png", "description": "Konsep resepsi elegan dengan dekorasi floral, stage, aisle, dan banquet setup." },
-    { "id": 3, "title": "Product Launch", "category": "Brand Activation", "image": "/projects/product-launch.png", "description": "Panggung peluncuran produk dengan visual LED, reveal moment, dan area display." },
-    { "id": 4, "title": "Live Concert", "category": "Entertainment", "image": "/projects/live-concert.png", "description": "Produksi panggung skala besar dengan lighting, audio, LED, dan crowd management." },
-    { "id": 5, "title": "Exhibition", "category": "Exhibition", "image": "/projects/exhibition.png", "description": "Area pameran profesional dengan booth modern, circulation flow, dan display zone." },
-    { "id": 6, "title": "Formal Ceremony", "category": "Ceremony", "image": "/projects/formal-ceremony.png", "description": "Acara formal dengan tata panggung, podium, seating, dan pengelolaan teknis." },
-    { "id": 7, "title": "Outdoor Festival", "category": "Public Event", "image": "/projects/outdoor-festival.png", "description": "Festival terbuka dengan tenant area, stage, lighting, dan pengaturan alur pengunjung." },
-    { "id": 8, "title": "Gala Dinner", "category": "Corporate Gathering", "image": "/projects/gala-dinner.png", "description": "Banquet dan gala dinner dengan atmosfer premium, stage, table setting, dan ambience lighting." },
-    { "id": 9, "title": "Graduation Event", "category": "Education Event", "image": "/projects/graduation.png", "description": "Konsep acara kelulusan dengan stage formal, aisle, seating, dan dekorasi institusional." },
-    { "id": 10, "title": "Religious Gathering", "category": "Community Event", "image": "/projects/religious-event.png", "description": "Acara keagamaan dengan setting panggung yang rapi, seating terorganisir, dan dukungan teknis." }
+    { "id": 1, "title": "Corporate Conference", "category": "Corporate Event", "image": "/projects/corporate-conference.png", "description": "Konsep ballroom modern dengan stage, LED screen, registration, dan area networking.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 2, "title": "Wedding Reception", "category": "Social Event", "image": "/projects/wedding-reception.png", "description": "Konsep resepsi elegan dengan dekorasi floral, stage, aisle, dan banquet setup.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 3, "title": "Product Launch", "category": "Brand Activation", "image": "/projects/product-launch.png", "description": "Panggung peluncuran produk dengan visual LED, reveal moment, dan area display.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 4, "title": "Live Concert", "category": "Entertainment", "image": "/projects/live-concert.png", "description": "Produksi panggung skala besar dengan lighting, audio, LED, dan crowd management.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 5, "title": "Exhibition", "category": "Exhibition", "image": "/projects/exhibition.png", "description": "Area pameran profesional dengan booth modern, circulation flow, dan display zone.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 6, "title": "Formal Ceremony", "category": "Ceremony", "image": "/projects/formal-ceremony.png", "description": "Acara formal dengan tata panggung, podium, seating, dan pengelolaan teknis.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 7, "title": "Outdoor Festival", "category": "Public Event", "image": "/projects/outdoor-festival.png", "description": "Festival terbuka dengan tenant area, stage, lighting, dan pengaturan alur pengunjung.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 8, "title": "Gala Dinner", "category": "Corporate Gathering", "image": "/projects/gala-dinner.png", "description": "Banquet dan gala dinner dengan atmosfer premium, stage, table setting, dan ambience lighting.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 9, "title": "Graduation Event", "category": "Education Event", "image": "/projects/graduation.png", "description": "Konsep acara kelulusan dengan stage formal, aisle, seating, dan dekorasi institusional.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
+    { "id": 10, "title": "Religious Gathering", "category": "Community Event", "image": "/projects/religious-event.png", "description": "Acara keagamaan dengan setting panggung yang rapi, seating terorganisir, dan dukungan teknis.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] }
   ],
   "team": [
     { "id": 1, "role": "Director", "name": "Nama Direktur", "description": "Direction & Client Relations", "photo": "" },
@@ -89,6 +94,7 @@
     { "id": 3, "role": "Operations", "name": "Nama Operations", "description": "Vendor & Field Coordination", "photo": "" },
     { "id": 4, "role": "Creative & Production", "name": "Nama Creative Lead", "description": "Concept, Visual & Production", "photo": "" }
   ],
+  "legalities": [],
   "workflow": [
     { "id": 1, "no": "01", "title": "Brief & Consultation", "description": "Memahami tujuan, audiens, skala, kebutuhan teknis, dan batasan event." },
     { "id": 2, "no": "02", "title": "Concept & Planning", "description": "Menyusun konsep, timeline, kebutuhan produksi, vendor, dan rencana pelaksanaan." },

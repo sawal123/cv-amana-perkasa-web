@@ -59,12 +59,32 @@ Akses di `/admin`, login dengan `ADMIN_USERNAME` / `ADMIN_PASSWORD` dari seed.
 - **Settings** — identitas, hero, tentang (termasuk statistik), teks tiap seksi,
   kontak (telepon, email, WhatsApp, alamat, Instagram), dan **SEO & meta**
   (judul, description, keywords, OG image, URL kanonis)
-- **Layanan / Project / Tim & Management / Workflow** — CRUD penuh: tambah, ubah,
-  hapus, urut naik-turun, dan sembunyikan tanpa menghapus baris
+- **Layanan / Project / Tim & Management / Workflow / Legalitas** — CRUD penuh:
+  tambah, ubah, hapus, urut naik-turun, dan sembunyikan tanpa menghapus baris
+- **Galeri project** — tombol **Galeri** pada setiap baris di daftar Project.
+  Tambah beberapa foto dari pustaka media, isi caption opsional, atur urutan
+  dengan ↑ ↓, dan hapus. Gambar cover diatur di form Project, bukan di sini
 - **Media** — unggah gambar (JPG/PNG/WEBP, maks 4 MB), dipakai lewat dropdown
-  di form Project dan Tim
+  di form Project, Tim, dan Galeri
 
 Urutan baris di admin sama persis dengan urutan tampil di situs.
+
+### Project, metadata, galeri, dan legalitas
+
+Setiap project punya satu **cover** (`projects.image`, thumbnail di grid) dan
+**0..N foto galeri** di tabel terpisah `project_images`. Cover tidak pernah
+digantikan oleh galeri.
+
+Empat field metadata bersifat opsional — `client`, `location`, `year`, dan
+`scope`. Field yang kosong **tidak dirender** di situs, jadi tidak ada label
+menggantung. `scope` diisi satu item per baris dan tampil sebagai daftar; kolomnya
+`varchar` biasa agar kompatibel dengan MariaDB dan MySQL lama.
+
+Project lama yang hanya punya title/category/image/description tetap tampil normal.
+
+**Legalitas** (`company_legalities`) adalah daftar bebas yang jenisnya ditentukan
+admin — tidak ada NIB/NPWP/Akta yang di-hardcode. Judul seksinya diatur di
+**Settings → Seksi Legalitas**, dan seluruh seksi disembunyikan bila daftar kosong.
 
 ## Arsitektur konten
 
@@ -73,14 +93,17 @@ lib/db/schema.ts        definisi tabel MySQL
 lib/db/index.ts         connection pool (lazy, connectionLimit 3)
 lib/admin/fields.ts     registry kolom konten → form admin + validasi
 lib/admin/settings-fields.ts  registry field Settings
+lib/admin/store.ts      CRUD generik untuk tabel konten
+lib/admin/gallery.ts    galeri per project (tambah/urut/hapus/caption)
 lib/content.ts          loadContent() / loadSettings()  ← inti seluruh sistem
 data/site.json          konten bawaan + fallback
 components/site-shell.tsx   terima prop `content`, tidak impor data langsung
+components/project-detail.tsx  modal detail project + galeri + lightbox
 ```
 
 `settings` disimpan key/value sebagai JSON per grup (`identity`, `hero`, `about`,
-`contact`, `seo`, …). Menambah field baru tidak butuh migrasi: field yang tidak ada
-di database otomatis memakai nilai dari `data/site.json`.
+`legalities`, `contact`, `seo`, …). Menambah field baru tidak butuh migrasi: field
+yang tidak ada di database otomatis memakai nilai dari `data/site.json`.
 
 ### Fallback
 
@@ -89,6 +112,10 @@ koneksi gagal, `DATABASE_URL` kosong, atau tabel masih kosong, situs menampilkan
 konten bawaan dari `data/site.json` — bukan halaman error. Setelah database ter-seed,
 semua yang kamu edit di admin berlaku penuh, termasuk menghapus seluruh project
 (portfolio benar-benar kosong, tidak kembali ke template).
+
+Galeri dan legalitas tidak memakai mekanisme fallback: keduanya default **kosong**,
+dan situs tetap render normal dengan daftar kosong. Project tanpa galeri hanya
+kehilangan seksi galerinya, dan legalitas kosong menyembunyikan seluruh seksi.
 
 ## Deploy ke cPanel
 
@@ -121,7 +148,13 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
    (mis. `namacpanel_amana_cms`).
 
 4. Import skema + konten: **phpMyAdmin → pilih DB → Import → `drizzle/import-all.sql`**.
-   Satu file itu berisi skema dan seed, dan aman diimpor berulang.
+   Satu file itu berisi seluruh migrasi (`0000`, `0001`, …) dan seed, dan aman
+   diimpor berulang.
+
+   Bila situsnya **sudah jalan** dan kamu hanya menambah fitur baru, cukup impor
+   migrasi terbaru saja: `drizzle/0001_project_gallery_and_legalities.sql`
+   (membuat `project_images` dan `company_legalities`, serta kolom metadata di
+   `projects`). Jalur lokal: `npm run db:migrate`.
 
 5. **Setup Node.js App → Create Application**:
 

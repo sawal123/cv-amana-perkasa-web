@@ -3,7 +3,7 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { media as mediaTable, projects, teamMembers } from "@/lib/db/schema";
+import { media as mediaTable, projectImages, projects, teamMembers } from "@/lib/db/schema";
 
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
@@ -131,11 +131,16 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
 /** Content columns that can point at a media path. Settings JSON is not covered. */
 export async function mediaUsage(path: string): Promise<number> {
   const db = getDb();
-  const [usedByProjects, usedByTeam] = await Promise.all([
+  const [usedByProjects, usedByTeam, usedByGallery] = await Promise.all([
     db.select({ n: sql<number>`count(*)` }).from(projects).where(eq(projects.image, path)),
     db.select({ n: sql<number>`count(*)` }).from(teamMembers).where(eq(teamMembers.photo, path)),
+    db.select({ n: sql<number>`count(*)` }).from(projectImages).where(eq(projectImages.image, path)),
   ]);
-  return Number(usedByProjects[0]?.n ?? 0) + Number(usedByTeam[0]?.n ?? 0);
+  return (
+    Number(usedByProjects[0]?.n ?? 0) +
+    Number(usedByTeam[0]?.n ?? 0) +
+    Number(usedByGallery[0]?.n ?? 0)
+  );
 }
 
 export type RemoveResult = { ok: true } | { ok: false; error: string };
