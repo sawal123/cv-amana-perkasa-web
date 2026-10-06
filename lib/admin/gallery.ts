@@ -1,7 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { projectImages, projects } from "@/lib/db/schema";
-import { SAFE_IMAGE_PATH } from "./fields";
+import { media as mediaTable, projectImages, projects } from "@/lib/db/schema";
+import { SAFE_UPLOAD_PATH } from "./fields";
 
 export type GalleryRow = {
   id: number;
@@ -37,6 +37,15 @@ export async function projectExists(projectId: number): Promise<boolean> {
   return rows.length > 0;
 }
 
+/** True only when the media library actually holds a row for this path. */
+async function mediaExists(path: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ n: sql<number>`count(*)` })
+    .from(mediaTable)
+    .where(eq(mediaTable.path, path));
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
 function normaliseCaption(caption: string): string {
   return caption.trim().slice(0, MAX_CAPTION);
 }
@@ -54,14 +63,27 @@ export async function addGalleryImage(
   image: string,
   caption: string,
 ): Promise<GalleryResult> {
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return { ok: false, error: "Project tidak valid." };
+  }
+
   const path = image.trim();
-  if (!SAFE_IMAGE_PATH.test(path)) {
+
+  // Media library only. A well-formed path is not enough — /projects/* is bundled
+  // artwork and must not become a gallery entry.
+  if (!SAFE_UPLOAD_PATH.test(path)) {
     return { ok: false, error: "Path gambar tidak valid. Pilih dari pustaka media." };
   }
 
   // Ownership check: the target project has to exist before anything is attached.
   if (!(await projectExists(projectId))) {
     return { ok: false, error: "Project tidak ditemukan." };
+  }
+
+  // Never trust the client just because the format looks right: the path has to
+  // correspond to a real media row, or the site would render a broken image.
+  if (!(await mediaExists(path))) {
+    return { ok: false, error: "Gambar tidak ada di pustaka media." };
   }
 
   await getDb()

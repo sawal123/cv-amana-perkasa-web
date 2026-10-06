@@ -7,7 +7,7 @@ import { z } from "zod";
 import { adminUsers, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { authSecretReady, createSession, destroySession, requireAdmin, verifyPassword } from "@/lib/auth";
-import { SAFE_IMAGE_PATH, TABLES, type ContentTable, type Payload } from "@/lib/admin/fields";
+import { SAFE_UPLOAD_PATH, TABLES, type ContentTable, type Payload } from "@/lib/admin/fields";
 import {
   SETTINGS_SCHEMA_BY_GROUP,
   isSettingsGroup,
@@ -256,7 +256,8 @@ export async function updateMediaAltAction(id: number, alt: string): Promise<Act
  */
 const positiveId = z.number().int().positive();
 const captionSchema = z.string().trim().max(MAX_CAPTION).default("");
-const imagePathSchema = z.string().trim().regex(SAFE_IMAGE_PATH);
+// Uploads only: the data layer then confirms the path exists in the media table.
+const imagePathSchema = z.string().trim().regex(SAFE_UPLOAD_PATH);
 
 function notFoundResult(what: string): ActionState {
   return { ok: false, message: `${what} tidak ditemukan.` };

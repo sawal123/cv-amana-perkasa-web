@@ -52,7 +52,3 @@ INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `positi
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (3, '03', 'Production', 'Menyiapkan seluruh kebutuhan visual, teknis, venue, talent, dan operasional.', 3, 1);
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (4, '04', 'Execution', 'Koordinasi onsite, rundown control, technical control, dan problem solving.', 4, 1);
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (5, '05', 'Evaluation', 'Serah terima dokumentasi, evaluasi pelaksanaan, serta kebutuhan tindak lanjut.', 5, 1);
-
--- Admin user: UPSERT, so re-running this file resets the password to
--- whatever ADMIN_USERNAME / ADMIN_PASSWORD were at generation time.
-INSERT INTO `admin_users` (`username`, `password_hash`) VALUES ('admin', 'scrypt:12b2b9e513683c9aacea6b96c975944a:9aff52fa300fc3b9fdedee6c40cd8c4d878781cea7dabe6991cebfa5aabbe2a21ef4069da0979fb6915afbf2bbc9d87eb0c801c8a1b8792dcff18ff4272764c3') ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);

@@ -169,7 +169,25 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
 6. Isi **Environment Variables**: `NODE_ENV=production`, `DATABASE_URL`,
    `AUTH_SECRET`. Lalu **Create → STOP APP → START APP**.
 
-7. Buka `/admin`, login, ganti satu field, cek homepage berubah.
+7. **Buat admin pertama.** `import-all.sql` sengaja **tidak** memuat kredensial
+   apa pun — tidak ada plaintext maupun hash — jadi admin dibuat dari environment:
+
+   ```bash
+   # di mesin lokal, dengan DATABASE_URL menunjuk database produksi
+   # (aktifkan Remote MySQL di cPanel untuk IP Anda) dan ADMIN_USERNAME /
+   # ADMIN_PASSWORD produksi sudah diisi di .env
+   npm run db:seed
+   ```
+
+   Perintah itu juga mengisi konten (idempoten) dan melakukan UPSERT admin, jadi
+   menjalankannya lagi sekaligus berfungsi sebagai reset password admin.
+
+   Bila Remote MySQL tidak tersedia, jalankan perintah yang sama **di server**
+   lewat SSH setelah `npm install` — `db:seed` membutuhkan `tsx`, yang tidak ikut
+   di dalam artefak standalone.
+
+8. Buka `/admin`, login dengan kredensial dari langkah 7, ganti satu field, cek
+   homepage berubah.
 
 ### Yang perlu diketahui soal cPanel
 
@@ -209,31 +227,40 @@ karena filesystem serverless bersifat ephemeral.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:generate` | Generate SQL migrasi dari `lib/db/schema.ts` |
 | `npm run db:migrate` | Terapkan `drizzle/*.sql` ke `DATABASE_URL` |
-| `npm run db:seed` | Isi konten + buat admin (butuh `ADMIN_PASSWORD`) |
-| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql` + `drizzle/import-all.sql` untuk phpMyAdmin |
+| `npm run db:seed` | Isi konten + buat/update admin dari environment (`ADMIN_PASSWORD`) |
+| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql` + `drizzle/import-all.sql` untuk phpMyAdmin. Keduanya **tanpa kredensial** |
 | `npm run deploy:pack` | Susun artefak upload di `./deploy` |
 
 ## Tes
 
-Dua rangkaian, keduanya butuh MySQL sungguhan.
+Tiga rangkaian, semuanya butuh MySQL sungguhan.
 
 ```bash
 npm run build && npm run deploy:pack
 (cd deploy && set PORT=3355&& set NODE_ENV=production&& node --env-file=..\.env server.js)
 
-npx tsx --env-file=.env scripts/integration-check.ts     # CRUD, upload, hashing, charset
-node --env-file=.env scripts/e2e-check.mjs http://localhost:3355   # HTTP + auth + fallback
+node --env-file=.env scripts/import-all-check.mjs                    # artefak deployment
+npx tsx --env-file=.env scripts/integration-check.ts                 # CRUD, gallery, upload, hashing
+node --env-file=.env scripts/e2e-check.mjs http://localhost:3355     # HTTP + auth + fallback
 ```
 
+- `import-all-check.mjs` — membuat database sungguhan di server lalu membuktikan
+  `drizzle/import-all.sql` berhasil pada import **pertama**, berhasil lagi pada
+  import **kedua** (tanpa duplikasi), memperbaiki database yang baru separuh
+  termigrasi, menghasilkan skema akhir yang benar, dan tidak memuat kredensial
+  admin. Sudah diverifikasi di MySQL 8 dan MariaDB 10.6.
 - `integration-check.ts` — kredensial seed, CRUD konten (insert/urut/sembunyikan/hapus,
-  posisi tetap rapat), validasi upload (tolak `.php`, `.exe`, >4 MB, 0 byte, PNG
-  menyamar), referensi media yang ditolak saat dihapus, dan round-trip utf8mb4.
+  posisi tetap rapat), metadata project, galeri (media yang ada diterima;
+  media tidak ada, path `/projects/`, URL eksternal, dan traversal ditolak tanpa
+  meninggalkan baris), cascade hapus project, legalitas, validasi upload (tolak
+  `.php`, `.exe`, >4 MB, 0 byte, PNG menyamar), dan round-trip utf8mb4.
 - `e2e-check.mjs` — halaman publik benar-benar dibaca dari MySQL, gambar upload
-  tersaji, guard path traversal, dan `/admin` menolak anonim/token palsu/token
-  kedaluwarsa sambil menerima sesi sah.
+  tersaji, guard path traversal, metadata/galeri/legalitas sampai ke halaman,
+  dan `/admin` menolak anonim/token palsu/token kedaluwarsa sambil menerima sesi sah.
 
-Keduanya mengubah database lalu mengembalikannya ke semula (snapshot diambil
-sebelum mutasi).
+Ketiganya mengubah database lalu mengembalikannya ke semula (`import-all-check.mjs`
+memakai database sementara yang dihapus di akhir, dua lainnya memakai snapshot yang
+diambil sebelum mutasi).
 
 ## Catatan keamanan
 

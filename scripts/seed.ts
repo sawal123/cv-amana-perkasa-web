@@ -14,7 +14,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { escape } from "mysql2";
 import { hashPassword } from "../lib/password";
-import { makeReimportable, stripDrizzleBreakpoints } from "./sql-utils";
+import { makeReimportable, splitStatements } from "./sql-utils";
 import type { SiteContent } from "../lib/types";
 
 const content = JSON.parse(
@@ -179,39 +179,37 @@ async function adminStatement(): Promise<string | null> {
 
 async function main() {
   const emitSql = process.argv.includes("--emit-sql");
-  const admin = await adminStatement();
-  const all = admin
-    ? [
-        ...statements,
-        "",
-        "-- Admin user: UPSERT, so re-running this file resets the password to",
-        "-- whatever ADMIN_USERNAME / ADMIN_PASSWORD were at generation time.",
-        admin,
-      ]
-    : statements;
 
   if (emitSql) {
+    // Deliberately WITHOUT the admin statement. These two files are committed, and
+    // a committed credential — even a hash derived from a developer's .env — has no
+    // business in the repository. Bootstrap the first admin with `npm run db:seed`,
+    // which reads ADMIN_USERNAME / ADMIN_PASSWORD from the runtime environment.
     const dataFile = new URL("../drizzle/seed-data.sql", import.meta.url);
-    const dataSql = `${all.join("\n")}\n`;
+    const dataSql = `${statements.join("\n")}\n`;
     writeFileSync(dataFile, dataSql, "utf8");
 
-    // One file an operator can import in a single pass: schema with the
-    // drizzle-kit breakpoint markers removed, then the seed data.
+    // One file an operator can import in a single pass: every migration, with the
+    // drizzle-kit breakpoint markers removed and each statement made re-runnable,
+    // followed by the seed data.
     const dir = new URL("../drizzle/", import.meta.url);
     const schemaFiles = readdirSync(dir)
       .filter((name) => name.endsWith(".sql") && name !== "import-all.sql" && name !== "seed-data.sql")
       .sort();
 
     const schemaSql = schemaFiles
-      .map((name) => `-- ${name}\n${makeReimportable(stripDrizzleBreakpoints(readFileSync(new URL(name, dir), "utf8")))}`)
+      .map((name) => `-- ${name}\n${makeReimportable(splitStatements(readFileSync(new URL(name, dir), "utf8")))}`)
       .join("\n\n");
 
     const combined = [
       "-- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin.",
       "-- Dihasilkan oleh `npm run db:seed:sql`. Jangan diedit manual; edit data/site.json lalu jalankan ulang.",
-      "-- PERINGATAN: file ini memuat hash password admin dari ADMIN_PASSWORD saat dibuat.",
-      "--   Impor ulang = reset password admin ke nilai itu. Hapus baris admin_users",
-      "--   di bagian bawah file ini bila Anda tidak menginginkannya.",
+      "-- Aman diimpor berulang, termasuk pada database yang baru separuh termigrasi: CREATE TABLE",
+      "-- memakai IF NOT EXISTS dan setiap ALTER dijaga lewat information_schema.",
+      "-- Impor ke database yang dituju (pilih database di phpMyAdmin) — penjagaan memakai",
+      "-- DATABASE(), jadi tanpa database terpilih penjagaannya tidak akan cocok.",
+      "-- File ini TIDAK memuat kredensial. Buat admin pertama dengan `npm run db:seed`",
+      "-- sambil menyetel ADMIN_USERNAME dan ADMIN_PASSWORD di environment.",
       "",
       "SET NAMES utf8mb4;",
       "",
@@ -223,10 +221,10 @@ async function main() {
 
     writeFileSync(new URL("../drizzle/import-all.sql", dir), combined, "utf8");
 
-    const count = all.filter((s) => s.endsWith(";")).length;
+    const count = statements.filter((s) => s.endsWith(";")).length;
     console.log(`\nWrote ${count} seed statements -> drizzle/seed-data.sql`);
-    console.log(`Wrote combined import         -> drizzle/import-all.sql`);
-    console.log("Import drizzle/import-all.sql lewat phpMyAdmin (satu kali jalan, aman diulang).");
+    console.log("Wrote combined import         -> drizzle/import-all.sql (tanpa kredensial admin)");
+    console.log("Import drizzle/import-all.sql lewat phpMyAdmin, lalu buat admin dengan `npm run db:seed`.");
     return;
   }
 
@@ -235,6 +233,18 @@ async function main() {
     console.error("\nDATABASE_URL tidak diset. Pakai `npm run db:seed:sql` untuk membuat file SQL saja.");
     process.exit(1);
   }
+
+  // Runtime bootstrap only: the admin row is never written to a committed file.
+  const admin = await adminStatement();
+  const all = admin
+    ? [
+        ...statements,
+        "",
+        "-- Admin user: UPSERT, so re-running seed resets it to the current",
+        "-- ADMIN_USERNAME / ADMIN_PASSWORD from the environment.",
+        admin,
+      ]
+    : statements;
 
   const mysql = await import("mysql2/promise");
   const connection = await mysql.createConnection(url);

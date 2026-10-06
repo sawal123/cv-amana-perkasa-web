@@ -40,6 +40,13 @@ export type TableDef = {
  */
 export const SAFE_IMAGE_PATH = /^\/(?:uploads|projects)\/[A-Za-z0-9._-]+$/;
 
+/**
+ * Stricter variant for project gallery images: media library output only.
+ * Bundled /projects/* artwork stays valid for a project cover, but a gallery
+ * entry has to be a real uploaded file, so it is refused here.
+ */
+export const SAFE_UPLOAD_PATH = /^\/uploads\/[A-Za-z0-9._-]+$/;
+
 function schemaFor(fields: FieldDef[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {

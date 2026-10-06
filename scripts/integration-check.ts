@@ -155,14 +155,25 @@ async function main() {
     const plainProject = noGallery.projects.find((p) => p.id === projectId);
     check("project without gallery renders with gallery: []", plainProject?.gallery.length === 0);
 
+    // Gallery entries have to be real media, so upload three files first.
+    const uploads: Array<{ id: number; path: string }> = [];
+    for (let index = 1; index <= 3; index += 1) {
+      const uploaded = await saveUpload(
+        fakeFile(`galeri-${index}.png`, Buffer.concat([PNG_HEADER, Buffer.alloc(32 + index)]), "image/png"),
+        `Galeri ${index}`,
+      );
+      if (uploaded.ok) uploads.push({ id: uploaded.item.id, path: uploaded.item.path });
+    }
+    check("three media files uploaded for the gallery", uploads.length === 3, `uploads=${uploads.length}`);
+
     // One image.
-    const one = await addGalleryImage(projectId, "/projects/exhibition.png", "Satu");
-    check("first gallery image is accepted", one.ok, one.ok ? "" : one.error);
+    const one = await addGalleryImage(projectId, uploads[0].path, "Satu");
+    check("gallery accepts an existing media path", one.ok, one.ok ? "" : one.error);
     check("gallery holds exactly one image", (await listGallery(projectId)).length === 1);
 
     // Several, and order must follow insertion.
-    await addGalleryImage(projectId, "/projects/live-concert.png", "Dua");
-    await addGalleryImage(projectId, "/projects/gala-dinner.png", "Tiga");
+    await addGalleryImage(projectId, uploads[1].path, "Dua");
+    await addGalleryImage(projectId, uploads[2].path, "Tiga");
     const three = await listGallery(projectId);
     check("gallery holds three images", three.length === 3);
     check("gallery order follows insertion", three.map((g) => g.caption).join(",") === "Satu,Dua,Tiga");
@@ -182,16 +193,26 @@ async function main() {
     await setGalleryCaption(moved[0].id, "  Caption Baru  ");
     check("caption is trimmed and saved", (await listGallery(projectId))[0].caption === "Caption Baru");
 
-    // Gallery rows must not accept arbitrary paths or foreign projects.
-    const badPath = await addGalleryImage(projectId, "/uploads/../../etc/passwd", "x");
-    check("gallery rejects path traversal", !badPath.ok);
-    const external = await addGalleryImage(projectId, "https://evil.example/x.png", "x");
-    check("gallery rejects external URLs", !external.ok);
-    const orphan = await addGalleryImage(999_999, "/projects/exhibition.png", "x");
+    // Every rejection case below must leave no row behind.
+    const beforeRejects = (await listGallery(projectId)).length;
+    const rejections: Array<[string, string]> = [
+      ["/uploads/nonexistent.jpg", "media yang tidak ada di tabel"],
+      ["/projects/exhibition.png", "path bundled /projects"],
+      ["https://example.com/x.jpg", "URL eksternal"],
+      ["/uploads/../secret.jpg", "path traversal"],
+    ];
+    for (const [path, label] of rejections) {
+      const result = await addGalleryImage(projectId, path, "x");
+      check(`gallery menolak ${label}`, !result.ok, result.ok ? "DITERIMA" : "");
+    }
+    check("tidak ada baris galeri tercipta dari penolakan", (await listGallery(projectId)).length === beforeRejects);
+
+    // A perfectly valid media path is still refused for a project that is not there.
+    const orphan = await addGalleryImage(999_999, uploads[0].path, "x");
     check("gallery rejects a non-existent project", !orphan.ok);
 
     // The data layer caps the caption rather than storing an over-long value.
-    const longCaption = await addGalleryImage(projectId, "/projects/exhibition.png", "x".repeat(400));
+    const longCaption = await addGalleryImage(projectId, uploads[0].path, "x".repeat(400));
     check("over-long caption is capped at 255", longCaption.ok && (await listGallery(projectId)).some((g) => g.caption.length === 255));
     const capped = (await listGallery(projectId)).find((g) => g.caption.length === 255);
     if (capped) await deleteGalleryImage(capped.id);
@@ -212,6 +233,13 @@ async function main() {
     await store.deleteRow("projects", projectId);
     check("deleting a project removes it", !(await store.listRows("projects")).some((r) => r.id === projectId));
     check("deleting a project cascades its gallery", (await listGallery(projectId)).length === 0);
+
+    // The cascade also frees the media files: while the gallery existed they were
+    // "in use" and removeMedia refused to delete them.
+    for (const upload of uploads) {
+      const removed = await removeMedia(upload.id);
+      check(`media galeri terhapus setelah cascade (${upload.path})`, removed.ok, removed.ok ? "" : removed.error);
+    }
   }
 
   // ---------------------------------------------------------- company legalities

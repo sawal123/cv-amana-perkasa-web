@@ -109,9 +109,15 @@ try {
     "UPDATE projects SET client = ?, location = ?, year = ?, scope = ? WHERE id = 1",
     [`${MARK}-CLIENT`, `${MARK}-LOKASI`, "2099", `${MARK}-SCOPE-A\n${MARK}-SCOPE-B`],
   );
+  // Gallery rows reference media library paths, matching what the admin can create.
+  const galleryPaths = [`/uploads/${MARK}-1.png`, `/uploads/${MARK}-2.png`];
   await connection.query(
-    "INSERT INTO project_images (project_id, image, caption, position) VALUES (1, '/projects/exhibition.png', ?, 1), (1, '/projects/live-concert.png', ?, 2)",
-    [`${MARK}-GALERI-1`, `${MARK}-GALERI-2`],
+    "INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png'), (?, ?, 'image/png')",
+    [`${MARK}-1.png`, galleryPaths[0], `${MARK}-2.png`, galleryPaths[1]],
+  );
+  await connection.query(
+    "INSERT INTO project_images (project_id, image, caption, position) VALUES (1, ?, ?, 1), (1, ?, ?, 2)",
+    [galleryPaths[0], `${MARK}-GALERI-1`, galleryPaths[1], `${MARK}-GALERI-2`],
   );
   await connection.query(
     "INSERT INTO company_legalities (title, value, description, position, published) VALUES (?, 'Terdaftar', '', 1, 1), (?, 'Terdaftar', '', 2, 0)",
@@ -135,6 +141,7 @@ try {
 
   // Clean up: back to seeded state, with zero legalities and zero gallery rows.
   await connection.query("DELETE FROM project_images WHERE project_id = 1");
+  await connection.query("DELETE FROM media WHERE filename LIKE ?", [`${MARK}%`]);
   await connection.query("DELETE FROM company_legalities WHERE title LIKE ?", [`${MARK}%`]);
   await connection.query(
     "UPDATE projects SET client = ?, location = ?, year = ?, scope = ? WHERE id = 1",

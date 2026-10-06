@@ -1,13 +1,16 @@
 -- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin.
 -- Dihasilkan oleh `npm run db:seed:sql`. Jangan diedit manual; edit data/site.json lalu jalankan ulang.
--- PERINGATAN: file ini memuat hash password admin dari ADMIN_PASSWORD saat dibuat.
---   Impor ulang = reset password admin ke nilai itu. Hapus baris admin_users
---   di bagian bawah file ini bila Anda tidak menginginkannya.
+-- Aman diimpor berulang, termasuk pada database yang baru separuh termigrasi: CREATE TABLE
+-- memakai IF NOT EXISTS dan setiap ALTER dijaga lewat information_schema.
+-- Impor ke database yang dituju (pilih database di phpMyAdmin) — penjagaan memakai
+-- DATABASE(), jadi tanpa database terpilih penjagaannya tidak akan cocok.
+-- File ini TIDAK memuat kredensial. Buat admin pertama dengan `npm run db:seed`
+-- sambil menyetel ADMIN_USERNAME dan ADMIN_PASSWORD di environment.
 
 SET NAMES utf8mb4;
 
 -- 0000_init.sql
-CREATE TABLE IF NOT EXISTS `admin_users` (
+CREATE TABLE IF NOT EXISTS`admin_users` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`username` varchar(80) NOT NULL,
 	`password_hash` varchar(255) NOT NULL,
@@ -15,7 +18,7 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
 	CONSTRAINT `admin_users_id` PRIMARY KEY(`id`),
 	CONSTRAINT `admin_users_username_uq` UNIQUE(`username`)
 );
-CREATE TABLE IF NOT EXISTS `media` (
+CREATE TABLE IF NOT EXISTS`media` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`filename` varchar(255) NOT NULL,
 	`path` varchar(500) NOT NULL,
@@ -27,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `media` (
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `media_id` PRIMARY KEY(`id`)
 );
-CREATE TABLE IF NOT EXISTS `projects` (
+CREATE TABLE IF NOT EXISTS`projects` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`title` varchar(150) NOT NULL,
 	`category` varchar(80) NOT NULL DEFAULT '',
@@ -38,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `projects_id` PRIMARY KEY(`id`)
 );
-CREATE TABLE IF NOT EXISTS `services` (
+CREATE TABLE IF NOT EXISTS`services` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`no` varchar(4) NOT NULL DEFAULT '',
 	`title` varchar(150) NOT NULL,
@@ -48,13 +51,13 @@ CREATE TABLE IF NOT EXISTS `services` (
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `services_id` PRIMARY KEY(`id`)
 );
-CREATE TABLE IF NOT EXISTS `settings` (
+CREATE TABLE IF NOT EXISTS`settings` (
 	`key` varchar(100) NOT NULL,
 	`value` text NOT NULL,
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `settings_key` PRIMARY KEY(`key`)
 );
-CREATE TABLE IF NOT EXISTS `team_members` (
+CREATE TABLE IF NOT EXISTS`team_members` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`role` varchar(100) NOT NULL,
 	`name` varchar(150) NOT NULL,
@@ -65,7 +68,7 @@ CREATE TABLE IF NOT EXISTS `team_members` (
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `team_members_id` PRIMARY KEY(`id`)
 );
-CREATE TABLE IF NOT EXISTS `workflow_steps` (
+CREATE TABLE IF NOT EXISTS`workflow_steps` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`no` varchar(4) NOT NULL DEFAULT '',
 	`title` varchar(150) NOT NULL,
@@ -77,7 +80,7 @@ CREATE TABLE IF NOT EXISTS `workflow_steps` (
 );
 
 -- 0001_project_gallery_and_legalities.sql
-CREATE TABLE IF NOT EXISTS `company_legalities` (
+CREATE TABLE IF NOT EXISTS`company_legalities` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`title` varchar(150) NOT NULL,
 	`value` varchar(150) NOT NULL DEFAULT '',
@@ -87,7 +90,7 @@ CREATE TABLE IF NOT EXISTS `company_legalities` (
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `company_legalities_id` PRIMARY KEY(`id`)
 );
-CREATE TABLE IF NOT EXISTS `project_images` (
+CREATE TABLE IF NOT EXISTS`project_images` (
 	`id` int unsigned AUTO_INCREMENT NOT NULL,
 	`project_id` int unsigned NOT NULL,
 	`image` varchar(500) NOT NULL,
@@ -96,13 +99,34 @@ CREATE TABLE IF NOT EXISTS `project_images` (
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `project_images_id` PRIMARY KEY(`id`)
 );
-ALTER TABLE `projects` ADD `client` varchar(150) DEFAULT '' NOT NULL;
-ALTER TABLE `projects` ADD `location` varchar(150) DEFAULT '' NOT NULL;
-ALTER TABLE `projects` ADD `year` varchar(9) DEFAULT '' NOT NULL;
-ALTER TABLE `projects` ADD `scope` varchar(1000) DEFAULT '' NOT NULL;
-ALTER TABLE `project_images` ADD CONSTRAINT `project_images_project_fk` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON DELETE cascade ON UPDATE no action;
-ALTER TABLE `media` DROP COLUMN `width`;
-ALTER TABLE `media` DROP COLUMN `height`;
+SET @ddl_3 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'client') = 0, 'ALTER TABLE `projects` ADD `client` varchar(150) DEFAULT '''' NOT NULL', 'DO 0');
+PREPARE ddl_3 FROM @ddl_3;
+EXECUTE ddl_3;
+DEALLOCATE PREPARE ddl_3;;
+SET @ddl_4 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'location') = 0, 'ALTER TABLE `projects` ADD `location` varchar(150) DEFAULT '''' NOT NULL', 'DO 0');
+PREPARE ddl_4 FROM @ddl_4;
+EXECUTE ddl_4;
+DEALLOCATE PREPARE ddl_4;;
+SET @ddl_5 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'year') = 0, 'ALTER TABLE `projects` ADD `year` varchar(9) DEFAULT '''' NOT NULL', 'DO 0');
+PREPARE ddl_5 FROM @ddl_5;
+EXECUTE ddl_5;
+DEALLOCATE PREPARE ddl_5;;
+SET @ddl_6 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'scope') = 0, 'ALTER TABLE `projects` ADD `scope` varchar(1000) DEFAULT '''' NOT NULL', 'DO 0');
+PREPARE ddl_6 FROM @ddl_6;
+EXECUTE ddl_6;
+DEALLOCATE PREPARE ddl_6;;
+SET @ddl_7 := IF((SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'project_images' AND CONSTRAINT_NAME = 'project_images_project_fk') = 0, 'ALTER TABLE `project_images` ADD CONSTRAINT `project_images_project_fk` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON DELETE cascade ON UPDATE no action', 'DO 0');
+PREPARE ddl_7 FROM @ddl_7;
+EXECUTE ddl_7;
+DEALLOCATE PREPARE ddl_7;;
+SET @ddl_8 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media' AND COLUMN_NAME = 'width') = 1, 'ALTER TABLE `media` DROP COLUMN `width`', 'DO 0');
+PREPARE ddl_8 FROM @ddl_8;
+EXECUTE ddl_8;
+DEALLOCATE PREPARE ddl_8;;
+SET @ddl_9 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media' AND COLUMN_NAME = 'height') = 1, 'ALTER TABLE `media` DROP COLUMN `height`', 'DO 0');
+PREPARE ddl_9 FROM @ddl_9;
+EXECUTE ddl_9;
+DEALLOCATE PREPARE ddl_9;;
 
 -- Generated by `npm run db:seed:sql`. Safe to re-run: INSERT IGNORE only fills gaps.
 -- Import the schema first — either drizzle/import-all.sql (schema + data in one
@@ -158,7 +182,3 @@ INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `positi
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (3, '03', 'Production', 'Menyiapkan seluruh kebutuhan visual, teknis, venue, talent, dan operasional.', 3, 1);
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (4, '04', 'Execution', 'Koordinasi onsite, rundown control, technical control, dan problem solving.', 4, 1);
 INSERT IGNORE INTO `workflow_steps` (`id`, `no`, `title`, `description`, `position`, `published`) VALUES (5, '05', 'Evaluation', 'Serah terima dokumentasi, evaluasi pelaksanaan, serta kebutuhan tindak lanjut.', 5, 1);
-
--- Admin user: UPSERT, so re-running this file resets the password to
--- whatever ADMIN_USERNAME / ADMIN_PASSWORD were at generation time.
-INSERT INTO `admin_users` (`username`, `password_hash`) VALUES ('admin', 'scrypt:12b2b9e513683c9aacea6b96c975944a:9aff52fa300fc3b9fdedee6c40cd8c4d878781cea7dabe6991cebfa5aabbe2a21ef4069da0979fb6915afbf2bbc9d87eb0c801c8a1b8792dcff18ff4272764c3') ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);
