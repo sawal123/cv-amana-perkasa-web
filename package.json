@@ -6,20 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
+    "db:seed": "tsx --env-file=.env scripts/seed.ts",
+    "db:seed:sql": "tsx --env-file=.env scripts/seed.ts --emit-sql",
+    "deploy:pack": "node scripts/pack.mjs"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "jose": "^6.2.12",
     "motion": "14.0.0",
+    "mysql2": "^3.24.5",
     "next": "16.3.8",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
-    "tailwindcss": "4.3.3",
-    "typescript": "5.9.2",
     "@types/node": "24.3.0",
     "@types/react": "19.1.12",
-    "@types/react-dom": "19.1.9"
+    "@types/react-dom": "19.1.9",
+    "drizzle-kit": "^0.31.11",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.2"
   }
 }

@@ -1,2 +1,9 @@
 import SiteShell from "@/components/site-shell";
-export default function Home() { return <SiteShell />; }
+import { loadContent } from "@/lib/content";
+
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const content = await loadContent();
+  return <SiteShell content={content} />;
+}

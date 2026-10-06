@@ -1,0 +1,99 @@
+{
+  "settings": {
+    "identity": {
+      "company": "CV AMANA PERKASA",
+      "shortName": "AMANA PERKASA",
+      "initials": "AP",
+      "tagline": "Event Service & Creative Production",
+      "navCta": "Konsultasi Event",
+      "copyright": "All rights reserved."
+    },
+    "hero": {
+      "title": "Mewujudkan Event Berkelas, Terukur, dan Berkesan.",
+      "description": "Kami membantu merancang dan mengeksekusi kebutuhan event secara profesional—mulai dari konsep, produksi, teknis, hingga pelaksanaan di lapangan.",
+      "image": "/projects/corporate-conference.png",
+      "ctaPrimary": "Lihat Project",
+      "ctaSecondary": "Hubungi Kami",
+      "scrollHint": "Scroll to explore"
+    },
+    "about": {
+      "kicker": "Tentang Perusahaan",
+      "heading": "Partner eksekusi untuk event yang harus berjalan tepat.",
+      "body": "CV AMANA PERKASA bergerak dalam pelayanan jasa event untuk kebutuhan korporasi, instansi, komunitas, pendidikan, hingga acara sosial. Kami mengutamakan koordinasi yang rapi, visual yang kuat, dan eksekusi yang terarah agar setiap acara berjalan sesuai tujuan.",
+      "stats": [
+        { "value": "360°", "label": "Event Support" },
+        { "value": "10", "label": "Project Concepts" },
+        { "value": "1", "label": "Integrated Team" }
+      ]
+    },
+    "services": {
+      "kicker": "Layanan Kami",
+      "heading": "Dari ide hingga event selesai.",
+      "description": "Layanan dapat dikombinasikan sesuai kebutuhan project, skala acara, lokasi, serta scope pekerjaan."
+    },
+    "projects": {
+      "kicker": "Selected Projects",
+      "heading": "Portfolio event.",
+      "description": "Ganti judul, deskripsi, kategori, dan foto asli project melalui panel admin."
+    },
+    "process": {
+      "kicker": "Cara Kerja",
+      "heading": "Workflow yang terstruktur."
+    },
+    "team": {
+      "kicker": "Management & Team",
+      "heading": "Satu tim, satu kendali project.",
+      "description": "Struktur ini dibuat sebagai template. Ganti nama dan jabatan sesuai struktur aktual CV AMANA PERKASA."
+    },
+    "contact": {
+      "kicker": "Let's Collaborate",
+      "heading": "Punya event yang ingin diwujudkan?",
+      "description": "Diskusikan kebutuhan acara, scope pekerjaan, timeline, dan kebutuhan teknis bersama tim CV AMANA PERKASA.",
+      "phone": "08xx-xxxx-xxxx",
+      "email": "email@perusahaan.com",
+      "address": "Alamat perusahaan dapat diganti melalui panel admin.",
+      "instagram": "@amanaperkasa",
+      "whatsapp": ""
+    },
+    "seo": {
+      "title": "CV AMANA PERKASA | Event Service & Creative Production",
+      "description": "Company profile CV AMANA PERKASA — pelayanan jasa event, produksi kreatif, dan event management.",
+      "keywords": "",
+      "ogImage": "",
+      "canonical": ""
+    }
+  },
+  "services": [
+    { "id": 1, "no": "01", "title": "Corporate Event", "description": "Seminar, conference, meeting, gathering, launching, dan kebutuhan event perusahaan." },
+    { "id": 2, "no": "02", "title": "Wedding & Social Event", "description": "Perencanaan, dekorasi, teknis, serta koordinasi acara sosial dan pernikahan." },
+    { "id": 3, "no": "03", "title": "Exhibition & Booth", "description": "Konsep booth, layout pameran, produksi area display, dan dukungan operasional." },
+    { "id": 4, "no": "04", "title": "Concert & Entertainment", "description": "Panggung, lighting, audio, LED, talent handling, dan koordinasi produksi hiburan." },
+    { "id": 5, "no": "05", "title": "Ceremony & Gathering", "description": "Acara seremonial, instansi, wisuda, gathering, serta kegiatan formal lainnya." },
+    { "id": 6, "no": "06", "title": "Community & Religious Event", "description": "Dukungan pelaksanaan kegiatan komunitas dan keagamaan dengan kebutuhan yang fleksibel." }
+  ],
+  "projects": [
+    { "id": 1, "title": "Corporate Conference", "category": "Corporate Event", "image": "/projects/corporate-conference.png", "description": "Konsep ballroom modern dengan stage, LED screen, registration, dan area networking." },
+    { "id": 2, "title": "Wedding Reception", "category": "Social Event", "image": "/projects/wedding-reception.png", "description": "Konsep resepsi elegan dengan dekorasi floral, stage, aisle, dan banquet setup." },
+    { "id": 3, "title": "Product Launch", "category": "Brand Activation", "image": "/projects/product-launch.png", "description": "Panggung peluncuran produk dengan visual LED, reveal moment, dan area display." },
+    { "id": 4, "title": "Live Concert", "category": "Entertainment", "image": "/projects/live-concert.png", "description": "Produksi panggung skala besar dengan lighting, audio, LED, dan crowd management." },
+    { "id": 5, "title": "Exhibition", "category": "Exhibition", "image": "/projects/exhibition.png", "description": "Area pameran profesional dengan booth modern, circulation flow, dan display zone." },
+    { "id": 6, "title": "Formal Ceremony", "category": "Ceremony", "image": "/projects/formal-ceremony.png", "description": "Acara formal dengan tata panggung, podium, seating, dan pengelolaan teknis." },
+    { "id": 7, "title": "Outdoor Festival", "category": "Public Event", "image": "/projects/outdoor-festival.png", "description": "Festival terbuka dengan tenant area, stage, lighting, dan pengaturan alur pengunjung." },
+    { "id": 8, "title": "Gala Dinner", "category": "Corporate Gathering", "image": "/projects/gala-dinner.png", "description": "Banquet dan gala dinner dengan atmosfer premium, stage, table setting, dan ambience lighting." },
+    { "id": 9, "title": "Graduation Event", "category": "Education Event", "image": "/projects/graduation.png", "description": "Konsep acara kelulusan dengan stage formal, aisle, seating, dan dekorasi institusional." },
+    { "id": 10, "title": "Religious Gathering", "category": "Community Event", "image": "/projects/religious-event.png", "description": "Acara keagamaan dengan setting panggung yang rapi, seating terorganisir, dan dukungan teknis." }
+  ],
+  "team": [
+    { "id": 1, "role": "Director", "name": "Nama Direktur", "description": "Direction & Client Relations", "photo": "" },
+    { "id": 2, "role": "Project Manager", "name": "Nama Project Manager", "description": "Planning & Project Control", "photo": "" },
+    { "id": 3, "role": "Operations", "name": "Nama Operations", "description": "Vendor & Field Coordination", "photo": "" },
+    { "id": 4, "role": "Creative & Production", "name": "Nama Creative Lead", "description": "Concept, Visual & Production", "photo": "" }
+  ],
+  "workflow": [
+    { "id": 1, "no": "01", "title": "Brief & Consultation", "description": "Memahami tujuan, audiens, skala, kebutuhan teknis, dan batasan event." },
+    { "id": 2, "no": "02", "title": "Concept & Planning", "description": "Menyusun konsep, timeline, kebutuhan produksi, vendor, dan rencana pelaksanaan." },
+    { "id": 3, "no": "03", "title": "Production", "description": "Menyiapkan seluruh kebutuhan visual, teknis, venue, talent, dan operasional." },
+    { "id": 4, "no": "04", "title": "Execution", "description": "Koordinasi onsite, rundown control, technical control, dan problem solving." },
+    { "id": 5, "no": "05", "title": "Evaluation", "description": "Serah terima dokumentasi, evaluasi pelaksanaan, serta kebutuhan tindak lanjut." }
+  ]
+}

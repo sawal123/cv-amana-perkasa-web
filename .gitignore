@@ -2,4 +2,13 @@ node_modules
 .next
 out
 .env*
+!.env.example
 .DS_Store
+*.tsbuildinfo
+
+# Gambar hasil upload dari panel admin
+/public/uploads
+
+# Artefak siap-upload dari scripts/pack.mjs
+/deploy
+.deploy-uploads-stash
