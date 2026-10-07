@@ -31,6 +31,12 @@ function check(name, condition, detail = "") {
 const SENTINEL = "SENTINEL-HERO-TITLE-12345";
 const connection = await mysql.createConnection(url);
 
+/** Current metadata of a project, so a test can put it back afterwards. */
+async function snapshotProject(id) {
+  const [rows] = await connection.query("SELECT client, location, year, scope FROM projects WHERE id = ?", [id]);
+  return rows[0] ?? { client: "", location: "", year: "", scope: "" };
+}
+
 /** Snapshot before touching anything, so restore is not circular. */
 const snapshot = async (key) =>
   (await connection.query("SELECT `value` FROM settings WHERE `key` = ?", [key]))[0][0].value;
@@ -57,7 +63,15 @@ try {
   await connection.query("UPDATE settings SET `value` = ? WHERE `key` = 'hero'", [heroBefore]);
   await connection.query("UPDATE settings SET `value` = ? WHERE `key` = 'about'", [aboutBefore]);
   const restored = await (await fetch(`${origin}/`)).text();
-  check("restore puts the seeded title back", !restored.includes(SENTINEL) && restored.includes("Mewujudkan Event Berkelas"));
+  // Compared against the snapshot rather than a hardcoded seed string: an operator
+  // may legitimately have edited this copy, and the test must not fail for that.
+  const titleBefore = JSON.parse(heroBefore).title;
+  const titleAfter = JSON.parse(await snapshot("hero")).title;
+  check(
+    "restore puts the original title back",
+    !restored.includes(SENTINEL) && titleAfter === titleBefore,
+    `"${titleAfter}"`,
+  );
 
   // ---- uploaded images are served --------------------------------------
   // Guards the bug where Next's boot-time public file index made every admin
@@ -84,6 +98,63 @@ try {
 
   const traversal = await fetch(origin + "/uploads/package.json");
   check("non-UUID upload path is refused", traversal.status === 404, `status=${traversal.status}`);
+
+  // ---- project gallery, metadata and legalities reach the public page ----
+  // site-shell is a client component, so its content props are serialised into the
+  // HTML — string assertions here do prove the database values were rendered.
+  const MARK = "E2E-SENTINEL";
+  const untouchedProject = await snapshotProject(1);
+
+  await connection.query(
+    "UPDATE projects SET client = ?, location = ?, year = ?, scope = ? WHERE id = 1",
+    [`${MARK}-CLIENT`, `${MARK}-LOKASI`, "2099", `${MARK}-SCOPE-A\n${MARK}-SCOPE-B`],
+  );
+  // Gallery rows reference media library paths, matching what the admin can create.
+  const galleryPaths = [`/uploads/${MARK}-1.png`, `/uploads/${MARK}-2.png`];
+  await connection.query(
+    "INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png'), (?, ?, 'image/png')",
+    [`${MARK}-1.png`, galleryPaths[0], `${MARK}-2.png`, galleryPaths[1]],
+  );
+  await connection.query(
+    "INSERT INTO project_images (project_id, image, caption, position) VALUES (1, ?, ?, 1), (1, ?, ?, 2)",
+    [galleryPaths[0], `${MARK}-GALERI-1`, galleryPaths[1], `${MARK}-GALERI-2`],
+  );
+  await connection.query(
+    "INSERT INTO company_legalities (title, value, description, position, published) VALUES (?, 'Terdaftar', '', 1, 1), (?, 'Terdaftar', '', 2, 0)",
+    [`${MARK}-LEGAL-TAYANG`, `${MARK}-LEGAL-SEMBUNYI`],
+  );
+
+  const enriched = await (await fetch(`${origin}/`)).text();
+  check("project client reaches the page", enriched.includes(`${MARK}-CLIENT`));
+  check("project location reaches the page", enriched.includes(`${MARK}-LOKASI`));
+  check("project year reaches the page", enriched.includes("2099"));
+  check("project scope items reach the page", enriched.includes(`${MARK}-SCOPE-A`) && enriched.includes(`${MARK}-SCOPE-B`));
+  check("gallery images reach the page", enriched.includes(`${MARK}-GALERI-1`) && enriched.includes(`${MARK}-GALERI-2`));
+  check("published legality reaches the page", enriched.includes(`${MARK}-LEGAL-TAYANG`));
+  check("unpublished legality is withheld", !enriched.includes(`${MARK}-LEGAL-SEMBUNYI`));
+  // The section markup, not the kicker string: settings are serialised into the
+  // page as props, so the kicker text is present even when the section is hidden.
+  check("legalities section renders when populated", enriched.includes('id="legalitas"'));
+
+  // A project with no gallery must not break the page.
+  check("page still renders with mixed gallery/no-gallery projects", enriched.includes("Wedding Reception"));
+
+  // Clean up: back to seeded state, with zero legalities and zero gallery rows.
+  await connection.query("DELETE FROM project_images WHERE project_id = 1");
+  await connection.query("DELETE FROM media WHERE filename LIKE ?", [`${MARK}%`]);
+  await connection.query("DELETE FROM company_legalities WHERE title LIKE ?", [`${MARK}%`]);
+  await connection.query(
+    "UPDATE projects SET client = ?, location = ?, year = ?, scope = ? WHERE id = 1",
+    [untouchedProject.client, untouchedProject.location, untouchedProject.year, untouchedProject.scope],
+  );
+
+  const bare = await fetch(`${origin}/`);
+  const bareHtml = await bare.text();
+  check("page renders with empty gallery and empty legalities", bare.status === 200, `status=${bare.status}`);
+  check("leftover gallery markers are gone", !bareHtml.includes(`${MARK}-GALERI`));
+  check("leftover legality markers are gone", !bareHtml.includes(`${MARK}-LEGAL`));
+  const legalitySectionGone = !bareHtml.includes('id="legalitas"');
+  check("empty legalities hides the section entirely", legalitySectionGone);
 
   // ---- admin auth ------------------------------------------------------
   const sign = (overrides = {}) =>

@@ -2,13 +2,15 @@ import { asc, eq } from "drizzle-orm";
 import { defaultContent } from "@/data/site";
 import { getDb } from "@/lib/db";
 import {
+  companyLegalities as legalitiesTable,
+  projectImages as projectImagesTable,
   projects as projectsTable,
   services as servicesTable,
   settings as settingsTable,
   teamMembers as teamTable,
   workflowSteps as workflowTable,
 } from "@/lib/db/schema";
-import { SETTINGS_GROUPS, type SiteContent, type SiteSettings } from "@/lib/types";
+import { SETTINGS_GROUPS, type GalleryImage, type SiteContent, type SiteSettings } from "@/lib/types";
 
 type SettingsMap = Partial<Record<keyof SiteSettings, unknown>>;
 
@@ -89,19 +91,42 @@ export async function loadContent(): Promise<SiteContent> {
 
   try {
     const db = getDb();
-    const [serviceRows, projectRows, teamRows, workflowRows] = await Promise.all([
+    const [serviceRows, projectRows, teamRows, workflowRows, galleryRows, legalityRows] = await Promise.all([
       db.select().from(servicesTable).where(eq(servicesTable.published, true)).orderBy(asc(servicesTable.position), asc(servicesTable.id)),
       db.select().from(projectsTable).where(eq(projectsTable.published, true)).orderBy(asc(projectsTable.position), asc(projectsTable.id)),
       db.select().from(teamTable).where(eq(teamTable.published, true)).orderBy(asc(teamTable.position), asc(teamTable.id)),
       db.select().from(workflowTable).where(eq(workflowTable.published, true)).orderBy(asc(workflowTable.position), asc(workflowTable.id)),
+      db.select().from(projectImagesTable).orderBy(asc(projectImagesTable.position), asc(projectImagesTable.id)),
+      db.select().from(legalitiesTable).where(eq(legalitiesTable.published, true)).orderBy(asc(legalitiesTable.position), asc(legalitiesTable.id)),
     ]);
+
+    // Group gallery rows per project. A project with no gallery simply has no
+    // entry, which maps to [] below — that is the "no gallery" case, not an error.
+    const galleryByProject = new Map<number, GalleryImage[]>();
+    for (const row of galleryRows) {
+      const list = galleryByProject.get(row.projectId) ?? [];
+      list.push({ id: row.id, image: row.image, caption: row.caption });
+      galleryByProject.set(row.projectId, list);
+    }
 
     return {
       settings,
       services: serviceRows.map((r) => ({ id: r.id, no: r.no, title: r.title, description: r.description })),
-      projects: projectRows.map((r) => ({ id: r.id, title: r.title, category: r.category, image: r.image, description: r.description })),
+      projects: projectRows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        image: r.image,
+        description: r.description,
+        client: r.client,
+        location: r.location,
+        year: r.year,
+        scope: r.scope,
+        gallery: galleryByProject.get(r.id) ?? [],
+      })),
       team: teamRows.map((r) => ({ id: r.id, role: r.role, name: r.name, description: r.description, photo: r.photo })),
       workflow: workflowRows.map((r) => ({ id: r.id, no: r.no, title: r.title, description: r.description })),
+      legalities: legalityRows.map((r) => ({ id: r.id, title: r.title, value: r.value, description: r.description })),
     };
   } catch (error) {
     warnOnce("content tables unreadable", error);
@@ -110,7 +135,7 @@ export async function loadContent(): Promise<SiteContent> {
 }
 
 function emptyLists() {
-  return { services: [], projects: [], team: [], workflow: [] };
+  return { services: [], projects: [], team: [], workflow: [], legalities: [] };
 }
 
 export async function loadSettings(): Promise<SiteSettings> {

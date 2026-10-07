@@ -4,6 +4,7 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { Project, SiteContent } from "@/lib/types";
+import ProjectDetail from "./project-detail";
 import { ArrowRight, ArrowUpRight, CloseIcon, MenuIcon } from "./icons";
 
 const nav = [
@@ -22,7 +23,7 @@ function BrandMark({ initials, shortName }: { initials: string; shortName: strin
 }
 
 export default function SiteShell({ content }: { content: SiteContent }) {
-  const { settings, services: serviceList, projects: projectList, team: teamList, workflow: workflowList } = content;
+  const { settings, services: serviceList, projects: projectList, team: teamList, workflow: workflowList, legalities: legalityList } = content;
   const { identity, hero, about, contact } = settings;
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,10 +109,14 @@ export default function SiteShell({ content }: { content: SiteContent }) {
       <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.team.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.team.heading}</h2><p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.team.description}</p></motion.div><div className="grid gap-4 sm:grid-cols-2">{teamList.map((m,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={m.id} className="rounded-3xl bg-white p-7 card-shadow"><div className="mb-10 flex h-12 w-12 items-center justify-center rounded-full bg-[#071b35] text-sm font-black text-white">{String(i+1).padStart(2,"0")}</div><div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{m.role}</div><div className="mt-2 text-xl font-black text-[#071b35]">{m.name}</div><div className="mt-2 text-sm text-slate-500">{m.description}</div></motion.article>)}</div></div>
     </section>
 
+    {legalityList.length > 0 ? <section id="legalitas" className="section-pad bg-white">
+      <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.legalities.kicker}</div><h2 className="mt-4 text-4xl font-black leading-tight tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.legalities.heading}</h2>{settings.legalities.description ? <p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.legalities.description}</p> : null}</motion.div><div className="grid gap-4 sm:grid-cols-2">{legalityList.map((l,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={l.id} className="rounded-3xl border border-slate-200 bg-[#f8fbfe] p-7"><div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{l.title}</div>{l.value ? <div className="mt-2 text-xl font-black text-[#071b35]">{l.value}</div> : null}{l.description ? <p className="mt-3 text-sm leading-6 text-slate-500">{l.description}</p> : null}</motion.article>)}</div></div>
+    </section> : null}
+
     <section id="contact" className="relative overflow-hidden bg-[#041429] py-24 text-white md:py-32"><div className="absolute inset-0 grid-pattern opacity-50"/><div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[90px]"/><motion.div {...reveal} className="container-shell relative"><div className="text-xs font-black uppercase tracking-[.20em] text-blue-300">{contact.kicker}</div><h2 className="mt-5 max-w-4xl text-balance text-5xl font-black leading-[1.03] tracking-[-.045em] md:text-7xl">{contact.heading}</h2><p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">{contact.description}</p><div className="mt-10 flex flex-wrap gap-4"><a href={`mailto:${contact.email}`} className="rounded-full bg-white px-6 py-3.5 text-sm font-black text-[#071b35]">{contact.email}</a><span className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-bold text-white">{contact.phone}</span>{whatsappDigits && <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">WhatsApp</a>}</div></motion.div></section>
 
     <footer className="bg-[#031020] py-10 text-white"><div className="container-shell flex flex-col justify-between gap-8 md:flex-row md:items-end"><BrandMark initials={identity.initials} shortName={identity.shortName} /><div className="text-sm leading-6 text-slate-400 md:text-right"><div>{contact.address}</div><div className="mt-1">{contact.instagram}</div><div className="mt-5 text-xs text-slate-500">© {new Date().getFullYear()} {identity.company}. {identity.copyright}</div></div></div></footer>
 
-    <AnimatePresence>{activeProject && <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[70] grid place-items-center bg-[#021020]/90 p-4 backdrop-blur-lg" onClick={()=>setActiveProject(null)}><motion.div initial={{opacity:0,scale:.96,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.98,y:10}} transition={{duration:.3}} onClick={e=>e.stopPropagation()} className="relative w-full max-w-5xl overflow-hidden rounded-3xl bg-white"><button onClick={()=>setActiveProject(null)} className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-[#041429]/85 text-white backdrop-blur"><CloseIcon className="h-5 w-5"/></button><div className="relative aspect-[16/9]"><Image src={activeProject.image} alt={activeProject.title} fill className="object-cover"/></div><div className="p-7 md:p-9"><div className="text-xs font-black uppercase tracking-[.18em] text-blue-600">{activeProject.category}</div><h3 className="mt-2 text-3xl font-black text-[#071b35] md:text-4xl">{activeProject.title}</h3><p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600">{activeProject.description}</p></div></motion.div></motion.div>}</AnimatePresence>
+    <AnimatePresence>{activeProject && <ProjectDetail project={activeProject} onClose={()=>setActiveProject(null)} />}</AnimatePresence>
   </main>;
 }

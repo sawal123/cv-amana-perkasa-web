@@ -59,12 +59,32 @@ Akses di `/admin`, login dengan `ADMIN_USERNAME` / `ADMIN_PASSWORD` dari seed.
 - **Settings** — identitas, hero, tentang (termasuk statistik), teks tiap seksi,
   kontak (telepon, email, WhatsApp, alamat, Instagram), dan **SEO & meta**
   (judul, description, keywords, OG image, URL kanonis)
-- **Layanan / Project / Tim & Management / Workflow** — CRUD penuh: tambah, ubah,
-  hapus, urut naik-turun, dan sembunyikan tanpa menghapus baris
+- **Layanan / Project / Tim & Management / Workflow / Legalitas** — CRUD penuh:
+  tambah, ubah, hapus, urut naik-turun, dan sembunyikan tanpa menghapus baris
+- **Galeri project** — tombol **Galeri** pada setiap baris di daftar Project.
+  Tambah beberapa foto dari pustaka media, isi caption opsional, atur urutan
+  dengan ↑ ↓, dan hapus. Gambar cover diatur di form Project, bukan di sini
 - **Media** — unggah gambar (JPG/PNG/WEBP, maks 4 MB), dipakai lewat dropdown
-  di form Project dan Tim
+  di form Project, Tim, dan Galeri
 
 Urutan baris di admin sama persis dengan urutan tampil di situs.
+
+### Project, metadata, galeri, dan legalitas
+
+Setiap project punya satu **cover** (`projects.image`, thumbnail di grid) dan
+**0..N foto galeri** di tabel terpisah `project_images`. Cover tidak pernah
+digantikan oleh galeri.
+
+Empat field metadata bersifat opsional — `client`, `location`, `year`, dan
+`scope`. Field yang kosong **tidak dirender** di situs, jadi tidak ada label
+menggantung. `scope` diisi satu item per baris dan tampil sebagai daftar; kolomnya
+`varchar` biasa agar kompatibel dengan MariaDB dan MySQL lama.
+
+Project lama yang hanya punya title/category/image/description tetap tampil normal.
+
+**Legalitas** (`company_legalities`) adalah daftar bebas yang jenisnya ditentukan
+admin — tidak ada NIB/NPWP/Akta yang di-hardcode. Judul seksinya diatur di
+**Settings → Seksi Legalitas**, dan seluruh seksi disembunyikan bila daftar kosong.
 
 ## Arsitektur konten
 
@@ -73,14 +93,17 @@ lib/db/schema.ts        definisi tabel MySQL
 lib/db/index.ts         connection pool (lazy, connectionLimit 3)
 lib/admin/fields.ts     registry kolom konten → form admin + validasi
 lib/admin/settings-fields.ts  registry field Settings
+lib/admin/store.ts      CRUD generik untuk tabel konten
+lib/admin/gallery.ts    galeri per project (tambah/urut/hapus/caption)
 lib/content.ts          loadContent() / loadSettings()  ← inti seluruh sistem
 data/site.json          konten bawaan + fallback
 components/site-shell.tsx   terima prop `content`, tidak impor data langsung
+components/project-detail.tsx  modal detail project + galeri + lightbox
 ```
 
 `settings` disimpan key/value sebagai JSON per grup (`identity`, `hero`, `about`,
-`contact`, `seo`, …). Menambah field baru tidak butuh migrasi: field yang tidak ada
-di database otomatis memakai nilai dari `data/site.json`.
+`legalities`, `contact`, `seo`, …). Menambah field baru tidak butuh migrasi: field
+yang tidak ada di database otomatis memakai nilai dari `data/site.json`.
 
 ### Fallback
 
@@ -89,6 +112,10 @@ koneksi gagal, `DATABASE_URL` kosong, atau tabel masih kosong, situs menampilkan
 konten bawaan dari `data/site.json` — bukan halaman error. Setelah database ter-seed,
 semua yang kamu edit di admin berlaku penuh, termasuk menghapus seluruh project
 (portfolio benar-benar kosong, tidak kembali ke template).
+
+Galeri dan legalitas tidak memakai mekanisme fallback: keduanya default **kosong**,
+dan situs tetap render normal dengan daftar kosong. Project tanpa galeri hanya
+kehilangan seksi galerinya, dan legalitas kosong menyembunyikan seluruh seksi.
 
 ## Deploy ke cPanel
 
@@ -121,7 +148,13 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
    (mis. `namacpanel_amana_cms`).
 
 4. Import skema + konten: **phpMyAdmin → pilih DB → Import → `drizzle/import-all.sql`**.
-   Satu file itu berisi skema dan seed, dan aman diimpor berulang.
+   Satu file itu berisi seluruh migrasi (`0000`, `0001`, …) dan seed, dan aman
+   diimpor berulang.
+
+   Bila situsnya **sudah jalan** dan kamu hanya menambah fitur baru, cukup impor
+   migrasi terbaru saja: `drizzle/0001_project_gallery_and_legalities.sql`
+   (membuat `project_images` dan `company_legalities`, serta kolom metadata di
+   `projects`). Jalur lokal: `npm run db:migrate`.
 
 5. **Setup Node.js App → Create Application**:
 
@@ -136,7 +169,25 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
 6. Isi **Environment Variables**: `NODE_ENV=production`, `DATABASE_URL`,
    `AUTH_SECRET`. Lalu **Create → STOP APP → START APP**.
 
-7. Buka `/admin`, login, ganti satu field, cek homepage berubah.
+7. **Buat admin pertama.** `import-all.sql` sengaja **tidak** memuat kredensial
+   apa pun — tidak ada plaintext maupun hash — jadi admin dibuat dari environment:
+
+   ```bash
+   # di mesin lokal, dengan DATABASE_URL menunjuk database produksi
+   # (aktifkan Remote MySQL di cPanel untuk IP Anda) dan ADMIN_USERNAME /
+   # ADMIN_PASSWORD produksi sudah diisi di .env
+   npm run db:seed
+   ```
+
+   Perintah itu juga mengisi konten (idempoten) dan melakukan UPSERT admin, jadi
+   menjalankannya lagi sekaligus berfungsi sebagai reset password admin.
+
+   Bila Remote MySQL tidak tersedia, jalankan perintah yang sama **di server**
+   lewat SSH setelah `npm install` — `db:seed` membutuhkan `tsx`, yang tidak ikut
+   di dalam artefak standalone.
+
+8. Buka `/admin`, login dengan kredensial dari langkah 7, ganti satu field, cek
+   homepage berubah.
 
 ### Yang perlu diketahui soal cPanel
 
@@ -176,31 +227,40 @@ karena filesystem serverless bersifat ephemeral.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:generate` | Generate SQL migrasi dari `lib/db/schema.ts` |
 | `npm run db:migrate` | Terapkan `drizzle/*.sql` ke `DATABASE_URL` |
-| `npm run db:seed` | Isi konten + buat admin (butuh `ADMIN_PASSWORD`) |
-| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql` + `drizzle/import-all.sql` untuk phpMyAdmin |
+| `npm run db:seed` | Isi konten + buat/update admin dari environment (`ADMIN_PASSWORD`) |
+| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql` + `drizzle/import-all.sql` untuk phpMyAdmin. Keduanya **tanpa kredensial** |
 | `npm run deploy:pack` | Susun artefak upload di `./deploy` |
 
 ## Tes
 
-Dua rangkaian, keduanya butuh MySQL sungguhan.
+Tiga rangkaian, semuanya butuh MySQL sungguhan.
 
 ```bash
 npm run build && npm run deploy:pack
 (cd deploy && set PORT=3355&& set NODE_ENV=production&& node --env-file=..\.env server.js)
 
-npx tsx --env-file=.env scripts/integration-check.ts     # CRUD, upload, hashing, charset
-node --env-file=.env scripts/e2e-check.mjs http://localhost:3355   # HTTP + auth + fallback
+node --env-file=.env scripts/import-all-check.mjs                    # artefak deployment
+npx tsx --env-file=.env scripts/integration-check.ts                 # CRUD, gallery, upload, hashing
+node --env-file=.env scripts/e2e-check.mjs http://localhost:3355     # HTTP + auth + fallback
 ```
 
+- `import-all-check.mjs` — membuat database sungguhan di server lalu membuktikan
+  `drizzle/import-all.sql` berhasil pada import **pertama**, berhasil lagi pada
+  import **kedua** (tanpa duplikasi), memperbaiki database yang baru separuh
+  termigrasi, menghasilkan skema akhir yang benar, dan tidak memuat kredensial
+  admin. Sudah diverifikasi di MySQL 8 dan MariaDB 10.6.
 - `integration-check.ts` — kredensial seed, CRUD konten (insert/urut/sembunyikan/hapus,
-  posisi tetap rapat), validasi upload (tolak `.php`, `.exe`, >4 MB, 0 byte, PNG
-  menyamar), referensi media yang ditolak saat dihapus, dan round-trip utf8mb4.
+  posisi tetap rapat), metadata project, galeri (media yang ada diterima;
+  media tidak ada, path `/projects/`, URL eksternal, dan traversal ditolak tanpa
+  meninggalkan baris), cascade hapus project, legalitas, validasi upload (tolak
+  `.php`, `.exe`, >4 MB, 0 byte, PNG menyamar), dan round-trip utf8mb4.
 - `e2e-check.mjs` — halaman publik benar-benar dibaca dari MySQL, gambar upload
-  tersaji, guard path traversal, dan `/admin` menolak anonim/token palsu/token
-  kedaluwarsa sambil menerima sesi sah.
+  tersaji, guard path traversal, metadata/galeri/legalitas sampai ke halaman,
+  dan `/admin` menolak anonim/token palsu/token kedaluwarsa sambil menerima sesi sah.
 
-Keduanya mengubah database lalu mengembalikannya ke semula (snapshot diambil
-sebelum mutasi).
+Ketiganya mengubah database lalu mengembalikannya ke semula (`import-all-check.mjs`
+memakai database sementara yang dihapus di akhir, dua lainnya memakai snapshot yang
+diambil sebelum mutasi).
 
 ## Catatan keamanan
 

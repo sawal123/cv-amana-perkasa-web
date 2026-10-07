@@ -1,5 +1,6 @@
 import {
   boolean,
+  foreignKey,
   int,
   mysqlTable,
   timestamp,
@@ -39,12 +40,47 @@ export const projects = mysqlTable("projects", {
   id: int("id", { unsigned: true }).autoincrement().primaryKey(),
   title: varchar("title", { length: 150 }).notNull(),
   category: varchar("category", { length: 80 }).notNull().default(""),
+  /** Cover / thumbnail. Stays a single value — gallery lives in project_images. */
   image: varchar("image", { length: 500 }).notNull(),
   description: text("description").notNull(),
+  client: varchar("client", { length: 150 }).notNull().default(""),
+  location: varchar("location", { length: 150 }).notNull().default(""),
+  /** Kept as text on purpose: a display year (or "2023/2024"), not a date system. */
+  year: varchar("year", { length: 9 }).notNull().default(""),
+  /**
+   * Newline-separated list of work items. A plain varchar with a default keeps
+   * this compatible with MariaDB and MySQL <8.0.13, which reject TEXT defaults,
+   * and avoids introducing a tag table for what is only a short bullet list.
+   */
+  scope: varchar("scope", { length: 1000 }).notNull().default(""),
   position: int("position", { unsigned: true }).notNull().default(0),
   published: boolean("published").notNull().default(true),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
 });
+
+/**
+ * Gallery images for a project. The foreign key cascades, so deleting a project
+ * can never leave orphaned gallery rows behind. Media files themselves are never
+ * deleted here — the same image may be referenced from elsewhere.
+ */
+export const projectImages = mysqlTable(
+  "project_images",
+  {
+    id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+    projectId: int("project_id", { unsigned: true }).notNull(),
+    image: varchar("image", { length: 500 }).notNull(),
+    caption: varchar("caption", { length: 255 }).notNull().default(""),
+    position: int("position", { unsigned: true }).notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.projectId],
+      foreignColumns: [projects.id],
+      name: "project_images_project_fk",
+    }).onDelete("cascade"),
+  ],
+);
 
 export const teamMembers = mysqlTable("team_members", {
   id: int("id", { unsigned: true }).autoincrement().primaryKey(),
@@ -61,6 +97,17 @@ export const workflowSteps = mysqlTable("workflow_steps", {
   id: int("id", { unsigned: true }).autoincrement().primaryKey(),
   no: varchar("no", { length: 4 }).notNull().default(""),
   title: varchar("title", { length: 150 }).notNull(),
+  description: text("description").notNull(),
+  position: int("position", { unsigned: true }).notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
+export const companyLegalities = mysqlTable("company_legalities", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  /** Free text: the admin decides which legalities exist (NIB, NPWP, Akta, ...). */
+  title: varchar("title", { length: 150 }).notNull(),
+  value: varchar("value", { length: 150 }).notNull().default(""),
   description: text("description").notNull(),
   position: int("position", { unsigned: true }).notNull().default(0),
   published: boolean("published").notNull().default(true),
@@ -89,7 +136,9 @@ export const adminUsers = mysqlTable("admin_users", {
 export type SettingRow = typeof settings.$inferSelect;
 export type ServiceRow = typeof services.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectImageRow = typeof projectImages.$inferSelect;
 export type TeamMemberRow = typeof teamMembers.$inferSelect;
 export type WorkflowStepRow = typeof workflowSteps.$inferSelect;
+export type CompanyLegalityRow = typeof companyLegalities.$inferSelect;
 export type MediaRow = typeof media.$inferSelect;
 export type AdminUserRow = typeof adminUsers.$inferSelect;

@@ -27,6 +27,7 @@ export type SiteSettings = {
   projects: { kicker: string; heading: string; description: string };
   process: { kicker: string; heading: string };
   team: { kicker: string; heading: string; description: string };
+  legalities: { kicker: string; heading: string; description: string };
   contact: {
     kicker: string;
     heading: string;
@@ -48,12 +49,21 @@ export type SiteSettings = {
 
 export type Service = { id: number; no: string; title: string; description: string };
 
+/** One image in a project's gallery. The cover stays in Project.image. */
+export type GalleryImage = { id: number; image: string; caption: string };
+
 export type Project = {
   id: number;
   title: string;
   category: string;
   image: string;
   description: string;
+  /** The four below are optional metadata: empty strings mean "not set". */
+  client: string;
+  location: string;
+  year: string;
+  scope: string;
+  gallery: GalleryImage[];
 };
 
 export type TeamMember = {
@@ -66,6 +76,9 @@ export type TeamMember = {
 
 export type WorkflowStep = { id: number; no: string; title: string; description: string };
 
+/** A company legality entry. The admin decides which ones exist. */
+export type Legality = { id: number; title: string; value: string; description: string };
+
 /** Bentuk utuh yang diterima <SiteShell />: settings + seluruh daftar konten. */
 export type SiteContent = {
   settings: SiteSettings;
@@ -73,6 +86,7 @@ export type SiteContent = {
   projects: Project[];
   team: TeamMember[];
   workflow: WorkflowStep[];
+  legalities: Legality[];
 };
 
 export type SettingsGroup = keyof SiteSettings;
@@ -85,6 +99,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   "projects",
   "process",
   "team",
+  "legalities",
   "contact",
   "seo",
 ];

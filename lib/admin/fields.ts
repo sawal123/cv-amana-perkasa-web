@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-export type ContentTable = "services" | "projects" | "team_members" | "workflow_steps";
+export type ContentTable =
+  | "services"
+  | "projects"
+  | "team_members"
+  | "workflow_steps"
+  | "company_legalities";
 
 export type FieldDef = {
   name: string;
@@ -27,11 +32,35 @@ export type TableDef = {
   schema: z.ZodType<Payload, Payload>;
 };
 
+/**
+ * Every image reference must be a site-relative path under /uploads (media
+ * manager output) or /projects (bundled artwork). This rejects absolute URLs,
+ * schemes, protocol-relative values and anything containing `..`, so a stored
+ * image field can never be turned into a path traversal or an injected host.
+ */
+export const SAFE_IMAGE_PATH = /^\/(?:uploads|projects)\/[A-Za-z0-9._-]+$/;
+
+/**
+ * Stricter variant for project gallery images: media library output only.
+ * Bundled /projects/* artwork stays valid for a project cover, but a gallery
+ * entry has to be a real uploaded file, so it is refused here.
+ */
+export const SAFE_UPLOAD_PATH = /^\/uploads\/[A-Za-z0-9._-]+$/;
+
 function schemaFor(fields: FieldDef[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
+    // Built as a ZodString first so min/max are available, then widened — a
+    // ZodDefault (from .default) has no .min.
     const base = z.string().trim().max(field.maxLength ?? 65_000);
-    shape[field.name] = field.required ? base.min(1) : base.default("");
+    let value: z.ZodTypeAny = field.required ? base.min(1) : base.default("");
+
+    if (field.type === "image") {
+      // Empty stays valid so optional images (team photo) can be cleared.
+      value = value.refine((v: unknown) => v === "" || SAFE_IMAGE_PATH.test(String(v)));
+    }
+
+    shape[field.name] = value;
   }
   // The shape is built at runtime from the registry, so the inferred output is an
   // index signature rather than Payload. The registry is the only author of those
@@ -71,8 +100,25 @@ export const TABLES: Record<ContentTable, TableDef> = {
     fields: [
       { name: "title", label: "Judul", type: "text", required: true, maxLength: 150 },
       { name: "category", label: "Kategori", type: "text", maxLength: 80 },
-      { name: "image", label: "Gambar", type: "image", required: true, maxLength: 500 },
+      { name: "image", label: "Gambar cover", type: "image", required: true, maxLength: 500, help: "Thumbnail utama di grid portfolio." },
       { name: "description", label: "Deskripsi", type: "textarea", required: true, maxLength: 1000 },
+      { name: "client", label: "Client", type: "text", maxLength: 150, help: "Opsional. Kosongkan bila tidak ingin ditampilkan di situs." },
+      { name: "location", label: "Lokasi", type: "text", maxLength: 150, help: "Opsional." },
+      { name: "year", label: "Tahun", type: "text", maxLength: 9, help: 'Opsional. Misalnya "2024".' },
+      { name: "scope", label: "Scope pekerjaan", type: "textarea", maxLength: 1000, help: "Opsional. Satu item per baris." },
+    ],
+  }),
+
+  company_legalities: define({
+    key: "company_legalities",
+    label: "Legalitas",
+    singular: "legalitas",
+    route: "/admin/content/company_legalities",
+    titleField: "title",
+    fields: [
+      { name: "title", label: "Nama legalitas", type: "text", required: true, maxLength: 150, help: 'Misalnya "NIB", "Akta Pendirian", "NPWP".' },
+      { name: "value", label: "Keterangan singkat", type: "text", maxLength: 150, help: 'Misalnya "Terdaftar", "Tersedia".' },
+      { name: "description", label: "Catatan", type: "textarea", maxLength: 500, help: "Opsional." },
     ],
   }),
 
