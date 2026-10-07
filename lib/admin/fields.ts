@@ -3,6 +3,7 @@ import { z } from "zod";
 export type ContentTable =
   | "services"
   | "projects"
+  | "why_choose_us"
   | "team_members"
   | "workflow_steps"
   | "company_legalities";
@@ -106,6 +107,18 @@ export const TABLES: Record<ContentTable, TableDef> = {
       { name: "location", label: "Lokasi", type: "text", maxLength: 150, help: "Opsional." },
       { name: "year", label: "Tahun", type: "text", maxLength: 9, help: 'Opsional. Misalnya "2024".' },
       { name: "scope", label: "Scope pekerjaan", type: "textarea", maxLength: 1000, help: "Opsional. Satu item per baris." },
+    ],
+  }),
+
+  why_choose_us: define({
+    key: "why_choose_us",
+    label: "Keunggulan",
+    singular: "keunggulan",
+    route: "/admin/content/why_choose_us",
+    titleField: "title",
+    fields: [
+      { name: "title", label: "Judul", type: "text", required: true, maxLength: 150 },
+      { name: "description", label: "Deskripsi", type: "textarea", required: true, maxLength: 500 },
     ],
   }),
 

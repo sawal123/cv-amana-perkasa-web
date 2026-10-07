@@ -91,6 +91,19 @@ const statements = [
     ]),
   ),
   "",
+  "-- Why Choose Us",
+  ...insertIgnore(
+    "why_choose_us",
+    ["id", "title", "description", "position", "published"],
+    content.whyChooseUs.map((row, index) => [
+      row.id,
+      row.title,
+      row.description,
+      index + 1,
+      true,
+    ]),
+  ),
+  "",
   // Both default to empty in data/site.json. Emitting them anyway means a fresh
   // install and the SQL import path stay identical if an operator ever adds
   // starter rows, instead of silently dropping them.

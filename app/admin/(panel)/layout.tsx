@@ -28,6 +28,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       href: TABLES[key].route,
       label: TABLES[key].label,
     })),
+    // Not a content table: quotation requests are inbound leads, not editable copy.
+    { href: "/admin/quotation-requests", label: "Permintaan Penawaran" },
     { href: "/admin/media", label: "Media" },
   ];
 

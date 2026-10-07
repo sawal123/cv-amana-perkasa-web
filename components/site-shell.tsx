@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { Project, SiteContent } from "@/lib/types";
 import ProjectDetail from "./project-detail";
+import QuotationForm from "./quotation-form";
 import { ArrowRight, ArrowUpRight, CloseIcon, MenuIcon } from "./icons";
 
 const nav = [
@@ -26,7 +27,7 @@ function BrandMark({ logo, initials, shortName, company }: { logo: string; initi
 }
 
 export default function SiteShell({ content }: { content: SiteContent }) {
-  const { settings, services: serviceList, projects: projectList, team: teamList, workflow: workflowList, legalities: legalityList } = content;
+  const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, team: teamList, workflow: workflowList, legalities: legalityList } = content;
   const { identity, hero, about, contact } = settings;
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -104,6 +105,15 @@ export default function SiteShell({ content }: { content: SiteContent }) {
       </div>
     </section>
 
+    {whyUsList.length > 0 ? <section id="why-us" className="section-pad bg-white">
+      <div className="container-shell">
+        <motion.div {...reveal} className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between"><div><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.whyUs.kicker}</div><h2 className="mt-4 max-w-2xl text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.whyUs.heading}</h2></div><p className="max-w-md text-sm leading-7 text-slate-500">{settings.whyUs.description}</p></motion.div>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {whyUsList.map((item,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:(i%2)*.05}} key={item.id} className="rounded-3xl border border-slate-200 bg-[#f6f9fc] p-7 card-shadow"><div className="text-xs font-black tracking-[.16em] text-blue-600">{String(i+1).padStart(2,"0")}</div><h3 className="mt-5 text-xl font-bold text-[#071b35]">{item.title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p></motion.article>)}
+        </div>
+      </div>
+    </section> : null}
+
     <section id="process" className="section-pad bg-white">
       <div className="container-shell"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.process.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.process.heading}</h2></motion.div><div className="mt-12 border-t border-slate-200">{workflowList.map((w,i)=><motion.div {...reveal} transition={{...reveal.transition,delay:i*.03}} key={w.id} className="grid gap-4 border-b border-slate-200 py-7 md:grid-cols-[80px_1fr_1.3fr] md:items-center"><div className="text-xs font-black tracking-[.18em] text-blue-600">{w.no}</div><div className="text-xl font-bold text-[#071b35]">{w.title}</div><div className="text-sm leading-7 text-slate-500">{w.description}</div></motion.div>)}</div></div>
     </section>
@@ -116,7 +126,7 @@ export default function SiteShell({ content }: { content: SiteContent }) {
       <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.legalities.kicker}</div><h2 className="mt-4 text-4xl font-black leading-tight tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.legalities.heading}</h2>{settings.legalities.description ? <p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.legalities.description}</p> : null}</motion.div><div className="grid gap-4 sm:grid-cols-2">{legalityList.map((l,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={l.id} className="rounded-3xl border border-slate-200 bg-[#f8fbfe] p-7"><div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{l.title}</div>{l.value ? <div className="mt-2 text-xl font-black text-[#071b35]">{l.value}</div> : null}{l.description ? <p className="mt-3 text-sm leading-6 text-slate-500">{l.description}</p> : null}</motion.article>)}</div></div>
     </section> : null}
 
-    <section id="contact" className="relative overflow-hidden bg-[#041429] py-24 text-white md:py-32"><div className="absolute inset-0 grid-pattern opacity-50"/><div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[90px]"/><motion.div {...reveal} className="container-shell relative"><div className="text-xs font-black uppercase tracking-[.20em] text-blue-300">{contact.kicker}</div><h2 className="mt-5 max-w-4xl text-balance text-5xl font-black leading-[1.03] tracking-[-.045em] md:text-7xl">{contact.heading}</h2><p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">{contact.description}</p><div className="mt-10 flex flex-wrap gap-4"><a href={`mailto:${contact.email}`} className="rounded-full bg-white px-6 py-3.5 text-sm font-black text-[#071b35]">{contact.email}</a><span className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-bold text-white">{contact.phone}</span>{whatsappDigits && <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">WhatsApp</a>}</div></motion.div></section>
+    <section id="contact" className="relative overflow-hidden bg-[#041429] py-24 text-white md:py-32"><div className="absolute inset-0 grid-pattern opacity-50"/><div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[90px]"/><motion.div {...reveal} className="container-shell relative"><div className="grid gap-12 lg:grid-cols-2 lg:items-start lg:gap-16"><div><div className="text-xs font-black uppercase tracking-[.20em] text-blue-300">{contact.kicker}</div><h2 className="mt-5 max-w-xl text-balance text-4xl font-black leading-[1.05] tracking-[-.04em] md:text-5xl">{contact.heading}</h2><p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">{contact.description}</p><div className="mt-10 flex flex-wrap gap-3">{contact.email ? <a href={`mailto:${contact.email}`} className="rounded-full bg-white px-6 py-3.5 text-sm font-black text-[#071b35] transition hover:bg-blue-100">{contact.email}</a> : null}{contact.phone ? <a href={`tel:${contact.phone.replace(/[^+0-9]/g, "")}`} className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/10">{contact.phone}</a> : null}{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">WhatsApp</a> : null}</div>{contact.address ? <div className="mt-8 max-w-md text-sm leading-6 text-slate-400">{contact.address}</div> : null}</div><QuotationForm whatsappDigits={whatsappDigits} copy={{ formHeading: contact.formHeading, formDescription: contact.formDescription, submitLabel: contact.submitLabel, successHeading: contact.successHeading, successDescription: contact.successDescription }} /></div></motion.div></section>
 
     <footer className="bg-[#031020] py-10 text-white"><div className="container-shell flex flex-col justify-between gap-8 md:flex-row md:items-end"><BrandMark logo={identity.logo} initials={identity.initials} shortName={identity.shortName} company={identity.company} /><div className="text-sm leading-6 text-slate-400 md:text-right"><div>{contact.address}</div><div className="mt-1">{contact.instagram}</div><div className="mt-5 text-xs text-slate-500">© {new Date().getFullYear()} {identity.company}. {identity.copyright}</div></div></div></footer>
 

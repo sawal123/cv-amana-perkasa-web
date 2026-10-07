@@ -114,6 +114,39 @@ export const companyLegalities = mysqlTable("company_legalities", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
 });
 
+export const whyChooseUs = mysqlTable("why_choose_us", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  title: varchar("title", { length: 150 }).notNull(),
+  description: text("description").notNull(),
+  position: int("position", { unsigned: true }).notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
+/**
+ * Inbound quotation requests from the public form. Not a content table: rows are
+ * written by visitors, never seeded, and read only through the admin panel.
+ * `status` is a plain varchar (no ENUM) so it stays portable across
+ * MySQL/MariaDB on shared hosting; the four allowed values are enforced in code.
+ */
+export const quotationRequests = mysqlTable("quotation_requests", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  name: varchar("name", { length: 150 }).notNull(),
+  company: varchar("company", { length: 150 }).notNull().default(""),
+  phone: varchar("phone", { length: 40 }).notNull(),
+  email: varchar("email", { length: 190 }).notNull().default(""),
+  eventType: varchar("event_type", { length: 120 }).notNull(),
+  /** Display date kept as a string for the same reason as projects.year. */
+  eventDate: varchar("event_date", { length: 10 }).notNull().default(""),
+  location: varchar("location", { length: 255 }).notNull().default(""),
+  guestCount: varchar("guest_count", { length: 50 }).notNull().default(""),
+  budgetRange: varchar("budget_range", { length: 100 }).notNull().default(""),
+  message: text("message").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("new"),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
 export const media = mysqlTable("media", {
   id: int("id", { unsigned: true }).autoincrement().primaryKey(),
   /** Original upload name, kept for reference only — never used to build a path. */
@@ -140,5 +173,7 @@ export type ProjectImageRow = typeof projectImages.$inferSelect;
 export type TeamMemberRow = typeof teamMembers.$inferSelect;
 export type WorkflowStepRow = typeof workflowSteps.$inferSelect;
 export type CompanyLegalityRow = typeof companyLegalities.$inferSelect;
+export type WhyChooseUsRow = typeof whyChooseUs.$inferSelect;
+export type QuotationRequestRow = typeof quotationRequests.$inferSelect;
 export type MediaRow = typeof media.$inferSelect;
 export type AdminUserRow = typeof adminUsers.$inferSelect;

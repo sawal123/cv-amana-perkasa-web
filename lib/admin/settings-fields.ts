@@ -85,6 +85,15 @@ export const SETTING_TABS: SettingTab[] = [
     ],
   },
   {
+    group: "whyUs",
+    label: "Keunggulan",
+    fields: [
+      { name: "kicker", label: "Label kecil", type: "text", maxLength: TEXT },
+      { name: "heading", label: "Judul seksi", type: "textarea", maxLength: LONG },
+      { name: "description", label: "Deskripsi", type: "textarea", maxLength: LONG },
+    ],
+  },
+  {
     group: "process",
     label: "Seksi Workflow",
     fields: [
@@ -122,6 +131,11 @@ export const SETTING_TABS: SettingTab[] = [
       { name: "whatsapp", label: "WhatsApp", type: "text", maxLength: TEXT, help: "Angka saja disarankan, mis. 62812xxxx. Kosongkan untuk menyembunyikan tombol." },
       { name: "address", label: "Alamat", type: "textarea", maxLength: LONG },
       { name: "instagram", label: "Instagram", type: "text", maxLength: TEXT },
+      { name: "formHeading", label: "Judul form penawaran", type: "text", maxLength: TEXT },
+      { name: "formDescription", label: "Deskripsi form penawaran", type: "textarea", maxLength: LONG },
+      { name: "submitLabel", label: "Label tombol kirim", type: "text", maxLength: TEXT },
+      { name: "successHeading", label: "Judul pesan sukses", type: "text", maxLength: TEXT },
+      { name: "successDescription", label: "Deskripsi pesan sukses", type: "textarea", maxLength: LONG },
     ],
   },
   {
