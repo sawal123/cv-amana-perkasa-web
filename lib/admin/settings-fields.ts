@@ -94,6 +94,15 @@ export const SETTING_TABS: SettingTab[] = [
     ],
   },
   {
+    group: "clients",
+    label: "Clients & Partners",
+    fields: [
+      { name: "kicker", label: "Label kecil", type: "text", maxLength: TEXT },
+      { name: "heading", label: "Judul seksi", type: "textarea", maxLength: LONG },
+      { name: "description", label: "Deskripsi", type: "textarea", maxLength: LONG },
+    ],
+  },
+  {
     group: "process",
     label: "Seksi Workflow",
     fields: [
@@ -104,6 +113,15 @@ export const SETTING_TABS: SettingTab[] = [
   {
     group: "team",
     label: "Seksi Tim",
+    fields: [
+      { name: "kicker", label: "Label kecil", type: "text", maxLength: TEXT },
+      { name: "heading", label: "Judul seksi", type: "textarea", maxLength: LONG },
+      { name: "description", label: "Deskripsi", type: "textarea", maxLength: LONG },
+    ],
+  },
+  {
+    group: "testimonials",
+    label: "Testimonials",
     fields: [
       { name: "kicker", label: "Label kecil", type: "text", maxLength: TEXT },
       { name: "heading", label: "Judul seksi", type: "textarea", maxLength: LONG },

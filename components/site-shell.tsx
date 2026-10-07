@@ -19,6 +19,20 @@ const reveal = {
   transition: { duration: .65, ease: [0.22, 1, 0.36, 1] as [number,number,number,number] },
 };
 
+/** Fallback avatar text for a testimonial without a photo. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+/** "Role · Company", or whichever part exists, or "" when neither is set. */
+function identityLine(role: string, company: string): string {
+  if (role && company) return `${role} · ${company}`;
+  return role || company;
+}
+
 function BrandMark({ logo, initials, shortName, company }: { logo: string; initials: string; shortName: string; company: string }) {
   if (logo) {
     return <Image src={logo} alt={company} width={180} height={40} className="h-10 w-auto max-w-[180px] object-contain" />;
@@ -27,7 +41,7 @@ function BrandMark({ logo, initials, shortName, company }: { logo: string; initi
 }
 
 export default function SiteShell({ content }: { content: SiteContent }) {
-  const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, team: teamList, workflow: workflowList, legalities: legalityList } = content;
+  const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, clientsPartners: clientList, team: teamList, workflow: workflowList, testimonials: testimonialList, legalities: legalityList } = content;
   const { identity, hero, about, contact } = settings;
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -114,6 +128,15 @@ export default function SiteShell({ content }: { content: SiteContent }) {
       </div>
     </section> : null}
 
+    {clientList.length > 0 ? <section id="clients" className="section-pad bg-[#f6f9fc]">
+      <div className="container-shell">
+        <motion.div {...reveal} className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between"><div><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.clients.kicker}</div><h2 className="mt-4 max-w-2xl text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.clients.heading}</h2></div><p className="max-w-md text-sm leading-7 text-slate-500">{settings.clients.description}</p></motion.div>
+        <div className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {clientList.map((c,i)=><motion.div {...reveal} transition={{...reveal.transition,delay:(i%6)*.03}} key={c.id} className="flex h-24 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-4 card-shadow">{c.logo ? <div className="relative h-12 w-full"><Image src={c.logo} alt={c.name} fill sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw" className="object-contain"/></div> : <span className="text-center text-sm font-bold text-[#071b35]">{c.name}</span>}</motion.div>)}
+        </div>
+      </div>
+    </section> : null}
+
     <section id="process" className="section-pad bg-white">
       <div className="container-shell"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.process.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.process.heading}</h2></motion.div><div className="mt-12 border-t border-slate-200">{workflowList.map((w,i)=><motion.div {...reveal} transition={{...reveal.transition,delay:i*.03}} key={w.id} className="grid gap-4 border-b border-slate-200 py-7 md:grid-cols-[80px_1fr_1.3fr] md:items-center"><div className="text-xs font-black tracking-[.18em] text-blue-600">{w.no}</div><div className="text-xl font-bold text-[#071b35]">{w.title}</div><div className="text-sm leading-7 text-slate-500">{w.description}</div></motion.div>)}</div></div>
     </section>
@@ -121,6 +144,15 @@ export default function SiteShell({ content }: { content: SiteContent }) {
     <section id="team" className="section-pad bg-[#eef5fb]">
       <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.team.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.team.heading}</h2><p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.team.description}</p></motion.div><div className="grid gap-4 sm:grid-cols-2">{teamList.map((m,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={m.id} className="overflow-hidden rounded-3xl bg-white card-shadow">{m.photo ? <div className="relative aspect-[4/5] w-full bg-slate-100"><Image src={m.photo} alt={m.name} fill sizes="(max-width: 640px) 100vw, 50vw" className="object-cover"/></div> : null}<div className="p-7">{m.photo ? null : <div className="mb-10 flex h-12 w-12 items-center justify-center rounded-full bg-[#071b35] text-sm font-black text-white">{String(i+1).padStart(2,"0")}</div>}<div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{m.role}</div><div className="mt-2 text-xl font-black text-[#071b35]">{m.name}</div><div className="mt-2 text-sm text-slate-500">{m.description}</div></div></motion.article>)}</div></div>
     </section>
+
+    {testimonialList.length > 0 ? <section id="testimonials" className="section-pad bg-[#f6f9fc]">
+      <div className="container-shell">
+        <motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.testimonials.kicker}</div><h2 className="mt-4 max-w-2xl text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.testimonials.heading}</h2><p className="mt-6 max-w-xl text-sm leading-7 text-slate-600">{settings.testimonials.description}</p></motion.div>
+        <div className="mt-12 grid gap-5 md:grid-cols-2">
+          {testimonialList.map((t,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:(i%2)*.05}} key={t.id} className="rounded-3xl bg-white p-7 card-shadow"><blockquote className="text-lg leading-8 text-slate-700">“{t.quote}”</blockquote><footer className="mt-6 flex items-center gap-4">{t.photo ? <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-100"><Image src={t.photo} alt={t.name} fill sizes="48px" className="object-cover"/></div> : <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#071b35] text-sm font-black text-white">{initialsOf(t.name)}</div>}<div className="min-w-0"><div className="text-sm font-bold text-[#071b35]">{t.name}</div>{identityLine(t.role, t.company) ? <div className="text-xs text-slate-500">{identityLine(t.role, t.company)}</div> : null}{t.project ? <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{`Project: ${t.project}`}</div> : null}</div></footer></motion.article>)}
+        </div>
+      </div>
+    </section> : null}
 
     {legalityList.length > 0 ? <section id="legalitas" className="section-pad bg-white">
       <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.legalities.kicker}</div><h2 className="mt-4 text-4xl font-black leading-tight tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.legalities.heading}</h2>{settings.legalities.description ? <p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.legalities.description}</p> : null}</motion.div><div className="grid gap-4 sm:grid-cols-2">{legalityList.map((l,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={l.id} className="rounded-3xl border border-slate-200 bg-[#f8fbfe] p-7"><div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{l.title}</div>{l.value ? <div className="mt-2 text-xl font-black text-[#071b35]">{l.value}</div> : null}{l.description ? <p className="mt-3 text-sm leading-6 text-slate-500">{l.description}</p> : null}</motion.article>)}</div></div>

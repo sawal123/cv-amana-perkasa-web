@@ -28,6 +28,7 @@ export default function ProjectDetail({ project, onClose }: { project: Project; 
   const gallery = project.gallery;
   const scope = scopeItems(project.scope);
   const hasMeta = Boolean(project.client || project.location || project.year);
+  const hasCaseStudy = Boolean(project.objective || project.approach || project.outcome);
 
   const step = useCallback(
     (delta: number) => {
@@ -123,6 +124,32 @@ export default function ProjectDetail({ project, onClose }: { project: Project; 
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {hasCaseStudy ? (
+            <div className="mt-8">
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-blue-600">Case Study</div>
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                {project.objective ? (
+                  <div className="rounded-2xl bg-[#f6f9fc] p-5">
+                    <h4 className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">Tujuan</h4>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{project.objective}</p>
+                  </div>
+                ) : null}
+                {project.approach ? (
+                  <div className="rounded-2xl bg-[#f6f9fc] p-5">
+                    <h4 className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">Pendekatan</h4>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{project.approach}</p>
+                  </div>
+                ) : null}
+                {project.outcome ? (
+                  <div className="rounded-2xl bg-[#f6f9fc] p-5">
+                    <h4 className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">Hasil</h4>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{project.outcome}</p>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

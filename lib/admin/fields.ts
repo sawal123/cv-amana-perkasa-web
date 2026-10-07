@@ -3,8 +3,10 @@ import { z } from "zod";
 export type ContentTable =
   | "services"
   | "projects"
+  | "clients_partners"
   | "why_choose_us"
   | "team_members"
+  | "testimonials"
   | "workflow_steps"
   | "company_legalities";
 
@@ -107,6 +109,27 @@ export const TABLES: Record<ContentTable, TableDef> = {
       { name: "location", label: "Lokasi", type: "text", maxLength: 150, help: "Opsional." },
       { name: "year", label: "Tahun", type: "text", maxLength: 9, help: 'Opsional. Misalnya "2024".' },
       { name: "scope", label: "Scope pekerjaan", type: "textarea", maxLength: 1000, help: "Opsional. Satu item per baris." },
+      { name: "objective", label: "Tujuan / Challenge", type: "textarea", maxLength: 2000, help: "Opsional. Tujuan client, kebutuhan utama, atau tantangan project." },
+      { name: "approach", label: "Pendekatan", type: "textarea", maxLength: 2000, help: "Opsional. Pendekatan, strategi produksi, koordinasi, atau solusi yang dilakukan." },
+      { name: "outcome", label: "Hasil / Outcome", type: "textarea", maxLength: 2000, help: "Opsional. Hasil yang dapat dijelaskan secara faktual. Hindari klaim atau angka yang tidak dapat diverifikasi." },
+    ],
+  }),
+
+  clients_partners: define({
+    key: "clients_partners",
+    label: "Clients & Partners",
+    singular: "client/partner",
+    route: "/admin/content/clients_partners",
+    titleField: "name",
+    fields: [
+      { name: "name", label: "Nama", type: "text", required: true, maxLength: 150 },
+      {
+        name: "logo",
+        label: "Logo",
+        type: "image",
+        maxLength: 500,
+        help: "Opsional. Kosongkan untuk menampilkan nama. Gunakan logo hanya bila perusahaan benar-benar client/partner dan penggunaannya diizinkan.",
+      },
     ],
   }),
 
@@ -146,6 +169,22 @@ export const TABLES: Record<ContentTable, TableDef> = {
       { name: "name", label: "Nama", type: "text", required: true, maxLength: 150 },
       { name: "description", label: "Ringkasan tugas", type: "textarea", maxLength: 300 },
       { name: "photo", label: "Foto", type: "image", maxLength: 500, help: "Opsional. Kosongkan untuk menampilkan nomor urut." },
+    ],
+  }),
+
+  testimonials: define({
+    key: "testimonials",
+    label: "Testimonials",
+    singular: "testimonial",
+    route: "/admin/content/testimonials",
+    titleField: "name",
+    fields: [
+      { name: "quote", label: "Quote", type: "textarea", required: true, maxLength: 1500, help: "Publikasikan hanya testimonial yang benar-benar diberikan dan diizinkan untuk ditampilkan." },
+      { name: "name", label: "Nama", type: "text", required: true, maxLength: 150 },
+      { name: "role", label: "Jabatan / Peran", type: "text", maxLength: 150, help: "Opsional." },
+      { name: "company", label: "Perusahaan / Instansi", type: "text", maxLength: 150, help: "Opsional." },
+      { name: "project", label: "Project / Event", type: "text", maxLength: 150, help: "Opsional. Konteks bebas, misalnya nama event." },
+      { name: "photo", label: "Foto", type: "image", maxLength: 500, help: "Opsional." },
     ],
   }),
 

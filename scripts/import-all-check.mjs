@@ -153,6 +153,11 @@ async function verifySchema(connection, label) {
   check(`${label}: company_legalities ada`, await hasTable(connection, "company_legalities"));
   check(`${label}: why_choose_us ada`, await hasTable(connection, "why_choose_us"));
   check(`${label}: quotation_requests ada`, await hasTable(connection, "quotation_requests"));
+  check(`${label}: clients_partners ada`, await hasTable(connection, "clients_partners"));
+  check(`${label}: testimonials ada`, await hasTable(connection, "testimonials"));
+  check(`${label}: projects.objective ada`, await exists(connection, "projects", "objective"));
+  check(`${label}: projects.approach ada`, await exists(connection, "projects", "approach"));
+  check(`${label}: projects.outcome ada`, await exists(connection, "projects", "outcome"));
   check(`${label}: media.width sudah tidak ada`, !(await exists(connection, "media", "width")));
   check(`${label}: media.height sudah tidak ada`, !(await exists(connection, "media", "height")));
 }
@@ -179,6 +184,9 @@ check("import-all.sql tidak memuat password hash", !importAll.includes("scrypt:"
 check("seed-data.sql tidak memuat password hash", !seedData.includes("scrypt:"));
 check("import-all.sql tidak memuat INSERT admin", !/INSERT\s+INTO\s+`admin_users`/i.test(importAll));
 check("seed-data.sql tidak memuat INSERT admin", !/INSERT\s+INTO\s+`admin_users`/i.test(seedData));
+// Social proof is never seeded: no invented clients or testimonials ship in the SQL.
+check("seed-data.sql tidak memuat client/partner fiktif", !/INSERT\s+IGNORE\s+INTO\s+`clients_partners`/i.test(seedData));
+check("seed-data.sql tidak memuat testimonial fiktif", !/INSERT\s+IGNORE\s+INTO\s+`testimonials`/i.test(seedData));
 
 // ----------------------------------------------------------- Test A / B / C
 const TEST_DB = "amana_import_test";
@@ -192,6 +200,8 @@ try {
   check("Test A: konten ter-seed", (await count(connection, "projects")) === 10, `projects=${await count(connection, "projects")}`);
   check("Test A: why_choose_us ter-seed", (await count(connection, "why_choose_us")) === 4, `why_choose_us=${await count(connection, "why_choose_us")}`);
   check("Test A: quotation_requests kosong", (await count(connection, "quotation_requests")) === 0);
+  check("Test A: clients_partners kosong", (await count(connection, "clients_partners")) === 0);
+  check("Test A: testimonials kosong", (await count(connection, "testimonials")) === 0);
   check("Test A: settings ter-seed", (await count(connection, "settings")) >= 10);
   check("Test A: tidak ada admin dari file", (await count(connection, "admin_users")) === 0);
 
@@ -201,6 +211,8 @@ try {
   check("Test C: konten tidak terduplikasi", (await count(connection, "projects")) === 10);
   check("Test C: why_choose_us tidak terduplikasi", (await count(connection, "why_choose_us")) === 4);
   check("Test C: quotation_requests tetap kosong", (await count(connection, "quotation_requests")) === 0);
+  check("Test C: clients_partners tetap kosong", (await count(connection, "clients_partners")) === 0);
+  check("Test C: testimonials tetap kosong", (await count(connection, "testimonials")) === 0);
 } finally {
   await connection.end();
 }

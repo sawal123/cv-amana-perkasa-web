@@ -75,7 +75,7 @@ const statements = [
   "-- Projects",
   ...insertIgnore(
     "projects",
-    ["id", "title", "category", "image", "description", "client", "location", "year", "scope", "position", "published"],
+    ["id", "title", "category", "image", "description", "client", "location", "year", "scope", "objective", "approach", "outcome", "position", "published"],
     content.projects.map((row, index) => [
       row.id,
       row.title,
@@ -86,6 +86,10 @@ const statements = [
       row.location ?? "",
       row.year ?? "",
       row.scope ?? "",
+      // Case-study fields ship empty for the placeholder projects: no invented outcomes.
+      row.objective ?? "",
+      row.approach ?? "",
+      row.outcome ?? "",
       index + 1,
       true,
     ]),

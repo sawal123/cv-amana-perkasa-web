@@ -53,6 +53,14 @@ export const projects = mysqlTable("projects", {
    * and avoids introducing a tag table for what is only a short bullet list.
    */
   scope: varchar("scope", { length: 1000 }).notNull().default(""),
+  /**
+   * Optional case-study narrative. VARCHAR with a default rather than TEXT so the
+   * ALTER in migration 0003 is portable across MySQL/MariaDB and existing rows get
+   * "" without a separate backfill.
+   */
+  objective: varchar("objective", { length: 2000 }).notNull().default(""),
+  approach: varchar("approach", { length: 2000 }).notNull().default(""),
+  outcome: varchar("outcome", { length: 2000 }).notNull().default(""),
   position: int("position", { unsigned: true }).notNull().default(0),
   published: boolean("published").notNull().default(true),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
@@ -124,6 +132,38 @@ export const whyChooseUs = mysqlTable("why_choose_us", {
 });
 
 /**
+ * Clients / partners shown as social proof. The logo is optional: when it is empty
+ * the public grid falls back to the name. No rows are seeded — the admin adds only
+ * companies that actually worked with CV AMANA PERKASA.
+ */
+export const clientsPartners = mysqlTable("clients_partners", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  name: varchar("name", { length: 150 }).notNull(),
+  logo: varchar("logo", { length: 500 }).notNull().default(""),
+  position: int("position", { unsigned: true }).notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
+/**
+ * Client testimonials. `project` is free-text context (e.g. "Product Launch"),
+ * deliberately not a foreign key: a testimonial may reference work that is not in
+ * the public portfolio. No rows are seeded.
+ */
+export const testimonials = mysqlTable("testimonials", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  quote: text("quote").notNull(),
+  name: varchar("name", { length: 150 }).notNull(),
+  role: varchar("role", { length: 150 }).notNull().default(""),
+  company: varchar("company", { length: 150 }).notNull().default(""),
+  project: varchar("project", { length: 150 }).notNull().default(""),
+  photo: varchar("photo", { length: 500 }).notNull().default(""),
+  position: int("position", { unsigned: true }).notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
+/**
  * Inbound quotation requests from the public form. Not a content table: rows are
  * written by visitors, never seeded, and read only through the admin panel.
  * `status` is a plain varchar (no ENUM) so it stays portable across
@@ -174,6 +214,8 @@ export type TeamMemberRow = typeof teamMembers.$inferSelect;
 export type WorkflowStepRow = typeof workflowSteps.$inferSelect;
 export type CompanyLegalityRow = typeof companyLegalities.$inferSelect;
 export type WhyChooseUsRow = typeof whyChooseUs.$inferSelect;
+export type ClientPartnerRow = typeof clientsPartners.$inferSelect;
+export type TestimonialRow = typeof testimonials.$inferSelect;
 export type QuotationRequestRow = typeof quotationRequests.$inferSelect;
 export type MediaRow = typeof media.$inferSelect;
 export type AdminUserRow = typeof adminUsers.$inferSelect;
