@@ -31,6 +31,7 @@ import {
   isQuotationStatus,
   listQuotationRequests,
   submitQuotation,
+  toWhatsAppNumber,
   updateQuotationStatus,
 } from "@/lib/quotation";
 import { SETTINGS_GROUPS } from "@/lib/types";
@@ -606,6 +607,18 @@ async function main() {
     if (id > 0) await db.delete(quotationRequests).where(eq(quotationRequests.id, id));
   }
   check("baris uji quotation dibersihkan", (await listQuotationRequests()).length === quotesBefore);
+
+  // ------------------------------------------------ whatsapp number helper
+  const whatsappCases: Array<[string, string]> = [
+    ["081234567890", "6281234567890"],
+    ["08 1234-567890", "6281234567890"],
+    ["+62 812-3456-7890", "6281234567890"],
+    ["6281234567890", "6281234567890"],
+    ["15551234567", "15551234567"],
+  ];
+  for (const [input, expected] of whatsappCases) {
+    check(`toWhatsAppNumber(${JSON.stringify(input)}) = ${expected}`, toWhatsAppNumber(input) === expected);
+  }
 }
 
 main()

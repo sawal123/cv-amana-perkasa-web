@@ -317,6 +317,10 @@ try {
 
   const detail = await grab(`/admin/quotation-requests/${quoteRow.id}`, validToken);
   check("admin quotation detail renders the request", detail.body.includes(`${QT}-NAME`) && detail.body.includes("Medan"));
+  check(
+    "admin quotation WhatsApp link is normalized to country code",
+    detail.body.includes("https://wa.me/6281234567890") && !detail.body.includes("wa.me/081234567890"),
+  );
   check("quotation brief is escaped, not executed", !detail.body.includes(XSS) && detail.body.includes("&lt;script&gt;"));
   check(
     "quotation status control renders all options",

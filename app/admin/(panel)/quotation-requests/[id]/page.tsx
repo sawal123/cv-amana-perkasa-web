@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import QuotationStatusForm from "@/components/admin/quotation-status-form";
 import { Card } from "@/components/admin/ui";
-import { getQuotationRequest } from "@/lib/quotation";
+import { getQuotationRequest, toWhatsAppNumber } from "@/lib/quotation";
 import { QUOTATION_STATUS_LABELS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   if (!request) notFound();
 
   const phoneDigits = request.phone.replace(/\D/g, "");
+  const whatsappNumber = toWhatsAppNumber(request.phone);
 
   return (
     <div className="space-y-6">
@@ -49,11 +50,11 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
             <a href={`tel:${phoneDigits}`} className="font-medium text-blue-600 hover:underline">
               {request.phone}
             </a>
-            {phoneDigits ? (
+            {whatsappNumber ? (
               <>
                 {" · "}
                 <a
-                  href={`https://wa.me/${phoneDigits}`}
+                  href={`https://wa.me/${whatsappNumber}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-blue-600 hover:underline"
