@@ -333,6 +333,64 @@ try {
   await connection.query("DELETE FROM quotation_requests WHERE name LIKE ?", [`${QT}%`]);
   const quoteLeft = (await connection.query("SELECT COUNT(*) AS n FROM quotation_requests WHERE name LIKE ?", [`${QT}%`]))[0][0].n;
   check("quotation test rows cleaned up", quoteLeft === 0);
+
+  // ---- clients / partners ----------------------------------------------
+  const CL = "E2E-CLIENT";
+  await connection.query(
+    "INSERT INTO clients_partners (name, logo, position, published) VALUES (?, '/projects/corporate-conference.png', 60, 1), (?, '', 61, 0), (?, '', 62, 1)",
+    [`${CL}-WITHLOGO`, `${CL}-HIDDEN`, `${CL}-NOLOGO`],
+  );
+
+  const clientsHtml = await (await fetch(`${origin}/`)).text();
+  check("clients section renders", clientsHtml.includes('id="clients"'));
+  check(
+    "published client renders with alt = name",
+    clientsHtml.includes(`alt="${CL}-WITHLOGO"`),
+  );
+  check("client without logo falls back to name text", clientsHtml.includes(`${CL}-NOLOGO`));
+  check("unpublished client is withheld", !clientsHtml.includes(`${CL}-HIDDEN`));
+
+  await connection.query("DELETE FROM clients_partners WHERE name LIKE ?", [`${CL}%`]);
+  const clientsLeft = (await connection.query("SELECT COUNT(*) AS n FROM clients_partners WHERE name LIKE ?", [`${CL}%`]))[0][0].n;
+  check("clients test rows cleaned up", clientsLeft === 0);
+
+  // ---- testimonials ----------------------------------------------------
+  const TS = "E2E-TESTI";
+  const TS_XSS = "<script>alert(9)</script>";
+  await connection.query(
+    "INSERT INTO testimonials (quote, name, role, company, project, photo, position, published) VALUES (?, ?, 'Manager', 'PT Uji', 'Annual Meeting 2026', '', 70, 1), (?, ?, '', '', '', '', 71, 0)",
+    [`${TS}-QUOTE ${TS_XSS}`, `${TS}-NAME`, `${TS}-HIDDEN`, `${TS}-HIDDENNAME`],
+  );
+
+  const testiHtml = await (await fetch(`${origin}/`)).text();
+  check("testimonials section renders", testiHtml.includes('id="testimonials"'));
+  check("published testimonial renders", testiHtml.includes(`${TS}-NAME`) && testiHtml.includes(`${TS}-QUOTE`));
+  check("testimonial identity composition renders", testiHtml.includes("Manager") && testiHtml.includes("PT Uji"));
+  check("testimonial project context renders", testiHtml.includes("Project: Annual Meeting 2026"));
+  check("testimonial quote is escaped, not executed", !testiHtml.includes(TS_XSS) && testiHtml.includes("&lt;script&gt;"));
+  check("unpublished testimonial is withheld", !testiHtml.includes(`${TS}-HIDDENNAME`));
+
+  await connection.query("DELETE FROM testimonials WHERE name LIKE ?", [`${TS}%`]);
+  const testiLeft = (await connection.query("SELECT COUNT(*) AS n FROM testimonials WHERE name LIKE ?", [`${TS}%`]))[0][0].n;
+  check("testimonials test rows cleaned up", testiLeft === 0);
+
+  // ---- project case-study data reaches the page -----------------------
+  // The case-study block lives in the project modal (client state), so it is not
+  // in the initial HTML; this asserts the data reaches the page props, while the
+  // conditional block itself is covered by integration + the hasCaseStudy guard.
+  const CS = "E2E-CASE";
+  await connection.query(
+    "INSERT INTO projects (title, category, image, description, objective, approach, outcome, position, published) VALUES (?, 'Uji', '/projects/corporate-conference.png', 'Desc', ?, ?, ?, 90, 1)",
+    [`${CS}-PROJECT`, `${CS}-OBJ`, `${CS}-APP`, `${CS}-OUT`],
+  );
+  const caseHtml = await (await fetch(`${origin}/`)).text();
+  check(
+    "project case-study fields reach the page",
+    caseHtml.includes(`${CS}-OBJ`) && caseHtml.includes(`${CS}-APP`) && caseHtml.includes(`${CS}-OUT`),
+  );
+  await connection.query("DELETE FROM projects WHERE title LIKE ?", [`${CS}%`]);
+  const caseLeft = (await connection.query("SELECT COUNT(*) AS n FROM projects WHERE title LIKE ?", [`${CS}%`]))[0][0].n;
+  check("case-study test project cleaned up", caseLeft === 0);
 } finally {
   await connection.end();
 }

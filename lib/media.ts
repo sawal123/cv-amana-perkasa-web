@@ -3,7 +3,15 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { media as mediaTable, projectImages, projects, settings as settingsTable, teamMembers } from "@/lib/db/schema";
+import {
+  clientsPartners,
+  media as mediaTable,
+  projectImages,
+  projects,
+  settings as settingsTable,
+  teamMembers,
+  testimonials,
+} from "@/lib/db/schema";
 import { SETTING_TABS } from "@/lib/admin/settings-fields";
 
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
@@ -172,15 +180,19 @@ function settingsUsage(rows: Array<{ key: string; value: string }>, path: string
 /** Content columns and Settings JSON that can point at a media path. */
 export async function mediaUsage(path: string): Promise<number> {
   const db = getDb();
-  const [usedByProjects, usedByTeam, usedByGallery, settingRows] = await Promise.all([
+  const [usedByProjects, usedByTeam, usedByClients, usedByTestimonials, usedByGallery, settingRows] = await Promise.all([
     db.select({ n: sql<number>`count(*)` }).from(projects).where(eq(projects.image, path)),
     db.select({ n: sql<number>`count(*)` }).from(teamMembers).where(eq(teamMembers.photo, path)),
+    db.select({ n: sql<number>`count(*)` }).from(clientsPartners).where(eq(clientsPartners.logo, path)),
+    db.select({ n: sql<number>`count(*)` }).from(testimonials).where(eq(testimonials.photo, path)),
     db.select({ n: sql<number>`count(*)` }).from(projectImages).where(eq(projectImages.image, path)),
     db.select().from(settingsTable),
   ]);
   return (
     Number(usedByProjects[0]?.n ?? 0) +
     Number(usedByTeam[0]?.n ?? 0) +
+    Number(usedByClients[0]?.n ?? 0) +
+    Number(usedByTestimonials[0]?.n ?? 0) +
     Number(usedByGallery[0]?.n ?? 0) +
     settingsUsage(settingRows, path)
   );

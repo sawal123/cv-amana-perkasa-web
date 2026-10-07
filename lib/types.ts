@@ -28,8 +28,10 @@ export type SiteSettings = {
   services: { kicker: string; heading: string; description: string };
   projects: { kicker: string; heading: string; description: string };
   whyUs: { kicker: string; heading: string; description: string };
+  clients: { kicker: string; heading: string; description: string };
   process: { kicker: string; heading: string };
   team: { kicker: string; heading: string; description: string };
+  testimonials: { kicker: string; heading: string; description: string };
   legalities: { kicker: string; heading: string; description: string };
   contact: {
     kicker: string;
@@ -67,11 +69,15 @@ export type Project = {
   category: string;
   image: string;
   description: string;
-  /** The four below are optional metadata: empty strings mean "not set". */
+  /** The seven below are optional metadata: empty strings mean "not set". */
   client: string;
   location: string;
   year: string;
   scope: string;
+  /** Case-study narrative. The block is hidden unless at least one is filled. */
+  objective: string;
+  approach: string;
+  outcome: string;
   gallery: GalleryImage[];
 };
 
@@ -90,6 +96,24 @@ export type WhyChooseUsItem = {
   description: string;
 };
 
+/** A client or partner. `logo` may be empty, in which case the name is shown. */
+export type ClientPartner = {
+  id: number;
+  name: string;
+  logo: string;
+};
+
+/** A client testimonial. Only `quote` and `name` are required. */
+export type Testimonial = {
+  id: number;
+  quote: string;
+  name: string;
+  role: string;
+  company: string;
+  project: string;
+  photo: string;
+};
+
 export type WorkflowStep = { id: number; no: string; title: string; description: string };
 
 /** A company legality entry. The admin decides which ones exist. */
@@ -101,8 +125,10 @@ export type SiteContent = {
   services: Service[];
   projects: Project[];
   whyChooseUs: WhyChooseUsItem[];
+  clientsPartners: ClientPartner[];
   team: TeamMember[];
   workflow: WorkflowStep[];
+  testimonials: Testimonial[];
   legalities: Legality[];
 };
 
@@ -152,8 +178,10 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   "services",
   "projects",
   "whyUs",
+  "clients",
   "process",
   "team",
+  "testimonials",
   "legalities",
   "contact",
   "seo",

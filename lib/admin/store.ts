@@ -1,7 +1,7 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { MySqlTable } from "drizzle-orm/mysql-core";
 import { getDb } from "@/lib/db";
-import { companyLegalities, projects, services, teamMembers, whyChooseUs, workflowSteps } from "@/lib/db/schema";
+import { clientsPartners, companyLegalities, projects, services, teamMembers, testimonials, whyChooseUs, workflowSteps } from "@/lib/db/schema";
 import { TABLES, type ContentTable, type Payload } from "./fields";
 
 /**
@@ -12,8 +12,10 @@ import { TABLES, type ContentTable, type Payload } from "./fields";
 const HANDLES = {
   services,
   projects,
+  clients_partners: clientsPartners,
   why_choose_us: whyChooseUs,
   team_members: teamMembers,
+  testimonials,
   workflow_steps: workflowSteps,
   company_legalities: companyLegalities,
 } as const;

@@ -608,6 +608,146 @@ async function main() {
   }
   check("baris uji quotation dibersihkan", (await listQuotationRequests()).length === quotesBefore);
 
+  // ------------------------------------------------- clients / partners
+  // Social proof is never seeded: a fresh database must show zero rows.
+  check("clients_partners seed kosong (tanpa client fiktif)", (await store.listRows("clients_partners")).length === 0);
+  check("testimonials seed kosong (tanpa testimonial fiktif)", (await store.listRows("testimonials")).length === 0);
+
+  const clientSchema = TABLES.clients_partners.schema;
+  check("client nama wajib", !clientSchema.safeParse({ name: "", logo: "" }).success);
+  check("client logo kosong diterima", clientSchema.safeParse({ name: "X", logo: "" }).success);
+  check("client logo /uploads diterima", clientSchema.safeParse({ name: "X", logo: "/uploads/logo.png" }).success);
+  check("client logo /projects diterima", clientSchema.safeParse({ name: "X", logo: "/projects/logo.png" }).success);
+  check("client logo URL eksternal ditolak", !clientSchema.safeParse({ name: "X", logo: "https://evil.example/logo.png" }).success);
+  check("client logo protocol-relative ditolak", !clientSchema.safeParse({ name: "X", logo: "//evil.example/logo.png" }).success);
+  check("client logo traversal ditolak", !clientSchema.safeParse({ name: "X", logo: "/uploads/../secret.png" }).success);
+
+  await store.saveRow("clients_partners", { name: "TEST CLIENT A", logo: "/projects/corporate-conference.png" });
+  await store.saveRow("clients_partners", { name: "TEST CLIENT B", logo: "" });
+  const twoClients = await store.listRows("clients_partners");
+  check("client dapat dibuat", twoClients.length === 2);
+  const clientA = twoClients.find((row) => row.values.name === "TEST CLIENT A");
+  const clientB = twoClients.find((row) => row.values.name === "TEST CLIENT B");
+  check("logo client tanpa gambar boleh kosong", clientB?.values.logo === "");
+
+  if (clientA) {
+    await store.saveRow("clients_partners", { ...clientA.values, name: "TEST CLIENT A2" }, clientA.id);
+    check("client dapat diedit", (await store.listRows("clients_partners")).some((row) => row.values.name === "TEST CLIENT A2"));
+
+    await store.moveRow("clients_partners", clientA.id, 1);
+    const movedClients = await store.listRows("clients_partners");
+    check("client dapat diurutkan", movedClients[1].id === clientA.id);
+
+    await store.setPublished("clients_partners", clientA.id, false);
+    check("client disembunyikan hilang dari publik", !(await loadContent()).clientsPartners.some((row) => row.id === clientA.id));
+    await store.setPublished("clients_partners", clientA.id, true);
+    check("client tayang kembali muncul di publik", (await loadContent()).clientsPartners.some((row) => row.id === clientA.id));
+  }
+
+  for (const row of await store.listRows("clients_partners")) await store.deleteRow("clients_partners", row.id);
+  check("client dapat dihapus sampai kosong", (await store.listRows("clients_partners")).length === 0);
+
+  // ------------------------------------------------------- testimonials
+  const testimonialSchema = TABLES.testimonials.schema;
+  check("testimonial quote wajib", !testimonialSchema.safeParse({ quote: "", name: "X" }).success);
+  check("testimonial nama wajib", !testimonialSchema.safeParse({ quote: "Bagus sekali", name: "" }).success);
+  check("testimonial quote terlalu panjang ditolak", !testimonialSchema.safeParse({ quote: "x".repeat(1501), name: "X" }).success);
+  check("testimonial foto valid diterima", testimonialSchema.safeParse({ quote: "Bagus", name: "X", photo: "/uploads/p.png" }).success);
+  check("testimonial foto eksternal ditolak", !testimonialSchema.safeParse({ quote: "Bagus", name: "X", photo: "https://evil.example/p.png" }).success);
+  check("testimonial foto traversal ditolak", !testimonialSchema.safeParse({ quote: "Bagus", name: "X", photo: "/uploads/../s.png" }).success);
+  const parsedTestimonial = testimonialSchema.safeParse({ quote: "Bagus", name: "X" });
+  check(
+    "testimonial field opsional default kosong",
+    parsedTestimonial.success &&
+      parsedTestimonial.data.role === "" &&
+      parsedTestimonial.data.company === "" &&
+      parsedTestimonial.data.project === "" &&
+      parsedTestimonial.data.photo === "",
+  );
+
+  await store.saveRow("testimonials", { quote: "TEST QUOTE SATU", name: "TEST PERSON A", role: "Manager", company: "PT Uji", project: "Annual Meeting" });
+  await store.saveRow("testimonials", { quote: "TEST QUOTE DUA", name: "TEST PERSON B" });
+  const twoTestimonials = await store.listRows("testimonials");
+  check("testimonial dapat dibuat", twoTestimonials.length === 2);
+  const testimonialA = twoTestimonials.find((row) => row.values.name === "TEST PERSON A");
+  check("testimonial menyimpan role/company/project", testimonialA?.values.role === "Manager" && testimonialA?.values.company === "PT Uji" && testimonialA?.values.project === "Annual Meeting");
+
+  if (testimonialA) {
+    await store.saveRow("testimonials", { ...testimonialA.values, quote: "TEST QUOTE DIUBAH" }, testimonialA.id);
+    check("testimonial dapat diedit", (await store.listRows("testimonials")).some((row) => row.values.quote === "TEST QUOTE DIUBAH"));
+
+    await store.moveRow("testimonials", testimonialA.id, 1);
+    check("testimonial dapat diurutkan", (await store.listRows("testimonials"))[1].id === testimonialA.id);
+
+    await store.setPublished("testimonials", testimonialA.id, false);
+    check("testimonial disembunyikan hilang dari publik", !(await loadContent()).testimonials.some((row) => row.id === testimonialA.id));
+    await store.setPublished("testimonials", testimonialA.id, true);
+    check("testimonial tayang kembali muncul di publik", (await loadContent()).testimonials.some((row) => row.id === testimonialA.id));
+  }
+
+  for (const row of await store.listRows("testimonials")) await store.deleteRow("testimonials", row.id);
+  check("testimonial dapat dihapus sampai kosong", (await store.listRows("testimonials")).length === 0);
+  const emptyProof = await loadContent();
+  check("tanpa baris tayang, clientsPartners = []", emptyProof.clientsPartners.length === 0);
+  check("tanpa baris tayang, testimonials = []", emptyProof.testimonials.length === 0);
+
+  // ------------------------------------------------------ project case study
+  const caseProject = (await store.listRows("projects"))[0];
+  check(
+    "project case-study default kosong",
+    caseProject.values.objective === "" && caseProject.values.approach === "" && caseProject.values.outcome === "",
+  );
+
+  if (caseProject) {
+    await store.saveRow(
+      "projects",
+      { ...caseProject.values, objective: "Tujuan uji", approach: "Pendekatan uji", outcome: "Hasil uji" },
+      caseProject.id,
+    );
+    const updated = (await loadContent()).projects.find((p) => p.id === caseProject.id);
+    check(
+      "case-study round-trip ke konten publik",
+      updated?.objective === "Tujuan uji" && updated?.approach === "Pendekatan uji" && updated?.outcome === "Hasil uji",
+    );
+    await store.saveRow("projects", { ...caseProject.values }, caseProject.id);
+    const restored = (await loadContent()).projects.find((p) => p.id === caseProject.id);
+    check("case-study dipulihkan kosong", restored?.objective === "" && restored?.approach === "" && restored?.outcome === "");
+  }
+
+  // ------------------------------------- media protection for new references
+  const brandMedia = await saveUpload(
+    fakeFile("clientbrand.png", Buffer.concat([PNG_HEADER, Buffer.alloc(40)]), "image/png"),
+    "Brand client",
+  );
+  check("upload untuk tes media client/testimonial", brandMedia.ok, brandMedia.ok ? brandMedia.item.path : brandMedia.error);
+
+  if (brandMedia.ok) {
+    const mediaPath = brandMedia.item.path;
+    await store.saveRow("clients_partners", { name: "MEDIA CLIENT", logo: mediaPath });
+    check("mediaUsage menghitung client logo", (await mediaUsage(mediaPath)) >= 1);
+    check("media dipakai client logo ditolak", !(await removeMedia(brandMedia.item.id)).ok);
+
+    await store.saveRow("testimonials", { quote: "Media photo quote", name: "MEDIA PERSON", photo: mediaPath });
+    check("mediaUsage menjumlahkan client + testimonial", (await mediaUsage(mediaPath)) >= 2);
+    check("media dipakai client+testimonial ditolak", !(await removeMedia(brandMedia.item.id)).ok);
+
+    for (const row of await store.listRows("clients_partners")) await store.deleteRow("clients_partners", row.id);
+    for (const row of await store.listRows("testimonials")) await store.deleteRow("testimonials", row.id);
+    check("mediaUsage 0 setelah referensi client/testimonial dibersihkan", (await mediaUsage(mediaPath)) === 0);
+    const freed = await removeMedia(brandMedia.item.id);
+    check("media bisa dihapus setelah referensi baru dibersihkan", freed.ok, freed.ok ? "" : freed.error);
+  }
+
+  // ---------------------------------------------------------- fallback data
+  check("fallback site.json clientsPartners = []", Array.isArray(defaultContent.clientsPartners) && defaultContent.clientsPartners.length === 0);
+  check("fallback site.json testimonials = []", Array.isArray(defaultContent.testimonials) && defaultContent.testimonials.length === 0);
+  check("fallback settings clients tersedia", defaultContent.settings.clients.kicker.length > 0);
+  check("fallback settings testimonials tersedia", defaultContent.settings.testimonials.kicker.length > 0);
+  check(
+    "fallback project punya field case-study kosong",
+    defaultContent.projects.every((p) => p.objective === "" && p.approach === "" && p.outcome === ""),
+  );
+
   // ------------------------------------------------ whatsapp number helper
   const whatsappCases: Array<[string, string]> = [
     ["081234567890", "6281234567890"],
