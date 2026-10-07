@@ -156,6 +156,59 @@ try {
   const legalitySectionGone = !bareHtml.includes('id="legalitas"');
   check("empty legalities hides the section entirely", legalitySectionGone);
 
+  // ---- company logo + team photo presentation --------------------------
+  // Assertions use rendered attributes (src/alt), not the serialised client
+  // props: a client component's props land in the HTML anyway, so only the
+  // rendered markup proves the image actually appears.
+  const BRAND = "E2E-BRAND";
+  const logoPath = `/uploads/${BRAND}-logo.png`;
+  const teamPhotoPath = `/uploads/${BRAND}-team.png`;
+
+  const identityBefore = await snapshot("identity");
+
+  // No logo configured: the initials mark must still render (backward compatible).
+  const initialsHtml = await (await fetch(`${origin}/`)).text();
+  check("empty logo falls back to the initials mark", initialsHtml.includes(">AP<"));
+
+  await connection.query(
+    "INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png'), (?, ?, 'image/png')",
+    [`${BRAND}-logo.png`, logoPath, `${BRAND}-team.png`, teamPhotoPath],
+  );
+
+  const [firstTeam] = (
+    await connection.query("SELECT id, name, photo FROM team_members ORDER BY position, id LIMIT 1")
+  )[0];
+  const teamPhotosBefore = firstTeam
+    ? (await connection.query("SELECT photo FROM team_members WHERE id = ?", [firstTeam.id]))[0][0].photo
+    : "";
+
+  await connection.query("UPDATE settings SET `value` = JSON_SET(`value`, '$.logo', ?) WHERE `key` = 'identity'", [logoPath]);
+  if (firstTeam) {
+    await connection.query("UPDATE team_members SET photo = ? WHERE id = ?", [teamPhotoPath, firstTeam.id]);
+  }
+
+  const brandHtml = await (await fetch(`${origin}/`)).text();
+  const logoRenders = brandHtml.split(`src="${logoPath}"`).length - 1;
+  check("company logo renders in header and footer", logoRenders >= 2, `renders=${logoRenders}`);
+  check("logo carries the company alt text", brandHtml.includes('alt="CV AMANA PERKASA"'));
+  check("initials mark disappears once a logo is set", !brandHtml.includes(">AP<"));
+  if (firstTeam) {
+    check("team photo renders on the public page", brandHtml.includes(`src="${teamPhotoPath}"`));
+    check("team photo carries the member name as alt", brandHtml.includes(`alt="${firstTeam.name}"`));
+  }
+  // Members left without a photo must keep the numbered fallback.
+  check("photo-less members keep the numbered fallback", brandHtml.includes("rounded-full bg-[#071b35]"));
+
+  // Restore settings, team photos, and the media rows.
+  await connection.query("UPDATE settings SET `value` = ? WHERE `key` = 'identity'", [identityBefore]);
+  if (firstTeam) {
+    await connection.query("UPDATE team_members SET photo = ? WHERE id = ?", [teamPhotosBefore, firstTeam.id]);
+  }
+  await connection.query("DELETE FROM media WHERE filename LIKE ?", [`${BRAND}%`]);
+
+  const restoredBrand = await (await fetch(`${origin}/`)).text();
+  check("logo removal restores the initials mark", restoredBrand.includes(">AP<") && !restoredBrand.includes(logoPath));
+
   // ---- admin auth ------------------------------------------------------
   const sign = (overrides = {}) =>
     new SignJWT({ username: "admin" })

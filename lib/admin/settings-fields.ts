@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SAFE_IMAGE_PATH } from "@/lib/admin/fields";
 import { SETTINGS_GROUPS, type SettingsGroup } from "@/lib/types";
 
 export type SettingFieldDef = {
@@ -31,6 +32,13 @@ export const SETTING_TABS: SettingTab[] = [
       { name: "company", label: "Nama perusahaan", type: "text", maxLength: TEXT },
       { name: "shortName", label: "Nama pendek", type: "text", maxLength: TEXT, help: "Muncul di logo header dan footer." },
       { name: "initials", label: "Inisial logo", type: "text", maxLength: 4 },
+      {
+        name: "logo",
+        label: "Logo perusahaan",
+        type: "image",
+        maxLength: 500,
+        help: "Logo resmi perusahaan. PNG/WEBP transparan disarankan. Kosongkan untuk memakai logo inisial.",
+      },
       { name: "tagline", label: "Tagline", type: "text", maxLength: TEXT },
       { name: "navCta", label: "Tombol navigasi", type: "text", maxLength: TEXT },
       { name: "copyright", label: "Catatan copyright", type: "text", maxLength: TEXT, help: "Tahun dan nama perusahaan ditambahkan otomatis." },
@@ -138,7 +146,13 @@ export const SETTINGS_SCHEMA_BY_GROUP = Object.fromEntries(
           .array(z.object({ value: z.string().trim().max(40), label: z.string().trim().max(80) }))
           .max(6);
       } else {
-        shape[field.name] = z.string().trim().max(field.maxLength ?? LONG).default("");
+        const base = z.string().trim().max(field.maxLength ?? LONG).default("");
+        // Image settings share the content-CMS rule: a site-relative path under
+        // /uploads or /projects, or empty. Absolute URLs, schemes and `..` are refused.
+        shape[field.name] =
+          field.type === "image"
+            ? base.refine((v: unknown) => v === "" || SAFE_IMAGE_PATH.test(String(v)))
+            : base;
       }
     }
     return [tab.group, z.object(shape).strict()];

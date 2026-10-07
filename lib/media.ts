@@ -3,7 +3,8 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { media as mediaTable, projectImages, projects, teamMembers } from "@/lib/db/schema";
+import { media as mediaTable, projectImages, projects, settings as settingsTable, teamMembers } from "@/lib/db/schema";
+import { SETTING_TABS } from "@/lib/admin/settings-fields";
 
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
@@ -128,18 +129,60 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
   };
 }
 
-/** Content columns that can point at a media path. Settings JSON is not covered. */
+/**
+ * Image-typed Settings fields, taken from the admin registry so a new image
+ * setting (e.g. another logo slot) is protected automatically without editing
+ * this file.
+ */
+const IMAGE_SETTING_FIELDS = SETTING_TABS.flatMap((tab) =>
+  tab.fields
+    .filter((field) => field.type === "image")
+    .map((field) => ({ group: tab.group, field: field.name })),
+);
+
+/**
+ * Count settings references to a media path. Settings are one JSON document per
+ * group, so each row is parsed in the application rather than with MySQL JSON
+ * functions — that keeps it portable across MySQL/MariaDB on cPanel. A malformed
+ * row is skipped rather than thrown, so one bad document cannot disable
+ * protection for every other reference.
+ */
+function settingsUsage(rows: Array<{ key: string; value: string }>, path: string): number {
+  let count = 0;
+  for (const row of rows) {
+    const fields = IMAGE_SETTING_FIELDS.filter((entry) => entry.group === row.key);
+    if (fields.length === 0) continue;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.value);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+
+    const values = parsed as Record<string, unknown>;
+    for (const { field } of fields) {
+      if (values[field] === path) count += 1;
+    }
+  }
+  return count;
+}
+
+/** Content columns and Settings JSON that can point at a media path. */
 export async function mediaUsage(path: string): Promise<number> {
   const db = getDb();
-  const [usedByProjects, usedByTeam, usedByGallery] = await Promise.all([
+  const [usedByProjects, usedByTeam, usedByGallery, settingRows] = await Promise.all([
     db.select({ n: sql<number>`count(*)` }).from(projects).where(eq(projects.image, path)),
     db.select({ n: sql<number>`count(*)` }).from(teamMembers).where(eq(teamMembers.photo, path)),
     db.select({ n: sql<number>`count(*)` }).from(projectImages).where(eq(projectImages.image, path)),
+    db.select().from(settingsTable),
   ]);
   return (
     Number(usedByProjects[0]?.n ?? 0) +
     Number(usedByTeam[0]?.n ?? 0) +
-    Number(usedByGallery[0]?.n ?? 0)
+    Number(usedByGallery[0]?.n ?? 0) +
+    settingsUsage(settingRows, path)
   );
 }
 

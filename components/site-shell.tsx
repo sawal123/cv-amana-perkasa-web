@@ -18,7 +18,10 @@ const reveal = {
   transition: { duration: .65, ease: [0.22, 1, 0.36, 1] as [number,number,number,number] },
 };
 
-function BrandMark({ initials, shortName }: { initials: string; shortName: string }) {
+function BrandMark({ logo, initials, shortName, company }: { logo: string; initials: string; shortName: string; company: string }) {
+  if (logo) {
+    return <Image src={logo} alt={company} width={180} height={40} className="h-10 w-auto max-w-[180px] object-contain" />;
+  }
   return <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-sm font-black tracking-tight text-white">{initials}</div><div><div className="text-[11px] font-semibold tracking-[.20em] text-blue-200">CV</div><div className="text-sm font-bold tracking-[.07em] text-white">{shortName}</div></div></div>;
 }
 
@@ -39,7 +42,7 @@ export default function SiteShell({ content }: { content: SiteContent }) {
   return <main className="overflow-x-hidden">
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 glass">
       <div className="container-shell flex h-[76px] items-center justify-between">
-        <a href="#home" aria-label={identity.company}><BrandMark initials={identity.initials} shortName={identity.shortName} /></a>
+        <a href="#home" aria-label={identity.company}><BrandMark logo={identity.logo} initials={identity.initials} shortName={identity.shortName} company={identity.company} /></a>
         <nav className="hidden items-center gap-7 md:flex">
           {nav.map(([label, href]) => <a key={label} href={href} className="text-sm font-medium text-slate-200 transition hover:text-white">{label}</a>)}
           <a href="#contact" className="rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#071b35] transition hover:bg-blue-100">{identity.navCta}</a>
@@ -106,7 +109,7 @@ export default function SiteShell({ content }: { content: SiteContent }) {
     </section>
 
     <section id="team" className="section-pad bg-[#eef5fb]">
-      <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.team.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.team.heading}</h2><p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.team.description}</p></motion.div><div className="grid gap-4 sm:grid-cols-2">{teamList.map((m,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={m.id} className="rounded-3xl bg-white p-7 card-shadow"><div className="mb-10 flex h-12 w-12 items-center justify-center rounded-full bg-[#071b35] text-sm font-black text-white">{String(i+1).padStart(2,"0")}</div><div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{m.role}</div><div className="mt-2 text-xl font-black text-[#071b35]">{m.name}</div><div className="mt-2 text-sm text-slate-500">{m.description}</div></motion.article>)}</div></div>
+      <div className="container-shell grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:gap-16"><motion.div {...reveal}><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.team.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.team.heading}</h2><p className="mt-6 max-w-md text-sm leading-7 text-slate-600">{settings.team.description}</p></motion.div><div className="grid gap-4 sm:grid-cols-2">{teamList.map((m,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:i*.06}} key={m.id} className="overflow-hidden rounded-3xl bg-white card-shadow">{m.photo ? <div className="relative aspect-[4/5] w-full bg-slate-100"><Image src={m.photo} alt={m.name} fill sizes="(max-width: 640px) 100vw, 50vw" className="object-cover"/></div> : null}<div className="p-7">{m.photo ? null : <div className="mb-10 flex h-12 w-12 items-center justify-center rounded-full bg-[#071b35] text-sm font-black text-white">{String(i+1).padStart(2,"0")}</div>}<div className="text-xs font-bold uppercase tracking-[.15em] text-blue-600">{m.role}</div><div className="mt-2 text-xl font-black text-[#071b35]">{m.name}</div><div className="mt-2 text-sm text-slate-500">{m.description}</div></div></motion.article>)}</div></div>
     </section>
 
     {legalityList.length > 0 ? <section id="legalitas" className="section-pad bg-white">
@@ -115,7 +118,7 @@ export default function SiteShell({ content }: { content: SiteContent }) {
 
     <section id="contact" className="relative overflow-hidden bg-[#041429] py-24 text-white md:py-32"><div className="absolute inset-0 grid-pattern opacity-50"/><div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[90px]"/><motion.div {...reveal} className="container-shell relative"><div className="text-xs font-black uppercase tracking-[.20em] text-blue-300">{contact.kicker}</div><h2 className="mt-5 max-w-4xl text-balance text-5xl font-black leading-[1.03] tracking-[-.045em] md:text-7xl">{contact.heading}</h2><p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">{contact.description}</p><div className="mt-10 flex flex-wrap gap-4"><a href={`mailto:${contact.email}`} className="rounded-full bg-white px-6 py-3.5 text-sm font-black text-[#071b35]">{contact.email}</a><span className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-bold text-white">{contact.phone}</span>{whatsappDigits && <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">WhatsApp</a>}</div></motion.div></section>
 
-    <footer className="bg-[#031020] py-10 text-white"><div className="container-shell flex flex-col justify-between gap-8 md:flex-row md:items-end"><BrandMark initials={identity.initials} shortName={identity.shortName} /><div className="text-sm leading-6 text-slate-400 md:text-right"><div>{contact.address}</div><div className="mt-1">{contact.instagram}</div><div className="mt-5 text-xs text-slate-500">© {new Date().getFullYear()} {identity.company}. {identity.copyright}</div></div></div></footer>
+    <footer className="bg-[#031020] py-10 text-white"><div className="container-shell flex flex-col justify-between gap-8 md:flex-row md:items-end"><BrandMark logo={identity.logo} initials={identity.initials} shortName={identity.shortName} company={identity.company} /><div className="text-sm leading-6 text-slate-400 md:text-right"><div>{contact.address}</div><div className="mt-1">{contact.instagram}</div><div className="mt-5 text-xs text-slate-500">© {new Date().getFullYear()} {identity.company}. {identity.copyright}</div></div></div></footer>
 
     <AnimatePresence>{activeProject && <ProjectDetail project={activeProject} onClose={()=>setActiveProject(null)} />}</AnimatePresence>
   </main>;
