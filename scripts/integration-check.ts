@@ -10,7 +10,7 @@
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { eq } from "drizzle-orm";
-import { adminUsers } from "@/lib/db/schema";
+import { adminUsers, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
@@ -23,7 +23,8 @@ import {
 import * as store from "@/lib/admin/store";
 import { loadContent } from "@/lib/content";
 import { MAX_UPLOAD_BYTES, listMedia, removeMedia, saveUpload, uploadDir } from "@/lib/media";
-import type { Payload } from "@/lib/admin/fields";
+import { TABLES, type Payload } from "@/lib/admin/fields";
+import { SETTINGS_SCHEMA_BY_GROUP } from "@/lib/admin/settings-fields";
 import { SETTINGS_GROUPS } from "@/lib/types";
 
 let failures = 0;
@@ -354,6 +355,46 @@ async function main() {
     "utf8mb4 content is intact",
     content.settings.hero.description.includes("—") && content.settings.about.stats[0].value.includes("°"),
   );
+
+  // --------------------------------------------------- logo image validation
+  // identity.logo is an image setting, so it is held to the same SAFE_IMAGE_PATH
+  // rule as the content CMS: /uploads or /projects, or empty.
+  const identity = content.settings.identity as unknown as Record<string, unknown>;
+  const identitySchema = SETTINGS_SCHEMA_BY_GROUP.identity;
+  const logo = (value: string) => identitySchema.safeParse({ ...identity, logo: value }).success;
+
+  check("logo kosong tetap valid (fallback inisial)", logo(""));
+  check("logo /uploads diterima", logo("/uploads/logo.png"));
+  check("logo /projects diterima", logo("/projects/logo.png"));
+  check("logo URL eksternal ditolak", !logo("https://evil.example/logo.png"));
+  check("logo protocol-relative ditolak", !logo("//evil.example/logo.png"));
+  check("logo path traversal ditolak", !logo("/uploads/../secret.png"));
+  check("logo skema javascript ditolak", !logo("javascript:alert(1)"));
+  check("hero image masih lolos aturan image", SETTINGS_SCHEMA_BY_GROUP.hero.safeParse(content.settings.hero).success);
+  check("og image masih lolos aturan image", SETTINGS_SCHEMA_BY_GROUP.seo.safeParse(content.settings.seo).success);
+
+  // Backward compatibility: a stored identity document written before `logo`
+  // existed still resolves, with logo defaulting to "".
+  const [identityRow] = await db.select().from(settingsTable).where(eq(settingsTable.key, "identity"));
+  if (identityRow) {
+    const legacy = JSON.parse(identityRow.value) as Record<string, unknown>;
+    delete legacy.logo;
+    await db.update(settingsTable).set({ value: JSON.stringify(legacy) }).where(eq(settingsTable.key, "identity"));
+    check("settings lama tanpa logo memakai fallback kosong", (await loadContent()).settings.identity.logo === "");
+    await db.update(settingsTable).set({ value: identityRow.value }).where(eq(settingsTable.key, "identity"));
+    check("identitas dipulihkan setelah tes fallback", (await loadContent()).settings.identity.logo === identity.logo);
+  }
+
+  // --------------------------------------------------- team photo validation
+  // team_members.photo already exists and is optional; only its validation and
+  // public rendering are new.
+  const teamSchema = TABLES.team_members.schema;
+  const teamBase = { role: "Director", name: "Nama Direktur", description: "", photo: "" };
+  check("team tanpa foto tetap valid", teamSchema.safeParse(teamBase).success);
+  check("foto team /uploads diterima", teamSchema.safeParse({ ...teamBase, photo: "/uploads/foto.png" }).success);
+  check("foto team URL eksternal ditolak", !teamSchema.safeParse({ ...teamBase, photo: "https://evil.example/foto.png" }).success);
+  check("foto team path traversal ditolak", !teamSchema.safeParse({ ...teamBase, photo: "/uploads/../secret.png" }).success);
+  check("loadContent membawa field foto team", content.team.every((member) => typeof member.photo === "string"));
 }
 
 main()

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { saveSettingsAction } from "@/app/admin/actions";
@@ -13,6 +14,7 @@ type Props = {
   label: string;
   fields: SettingFieldDef[];
   values: Record<string, unknown>;
+  media: Array<{ path: string; alt: string }>;
 };
 
 function statsFrom(values: Record<string, unknown>): StatValue[] {
@@ -23,7 +25,7 @@ function statsFrom(values: Record<string, unknown>): StatValue[] {
     .map((item) => ({ value: String(item.value ?? ""), label: String(item.label ?? "") }));
 }
 
-export default function SettingsEditor({ group, label, fields, values }: Props) {
+export default function SettingsEditor({ group, label, fields, values, media }: Props) {
   const router = useRouter();
   const [text, setText] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
@@ -159,6 +161,34 @@ export default function SettingsEditor({ group, label, fields, values }: Props) 
                   onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
                 />
               )}
+
+              {field.type === "image" ? (
+                <div className="mt-2 space-y-2">
+                  {text[field.name] ? (
+                    <div className="relative h-24 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                      <Image src={text[field.name]} alt="" className="object-contain" fill sizes="160px" />
+                    </div>
+                  ) : null}
+                  {media.length ? (
+                    <select
+                      className={inputClass}
+                      value=""
+                      onChange={(e) => e.target.value && setText((current) => ({ ...current, [field.name]: e.target.value }))}
+                    >
+                      <option value="">Pilih dari pustaka gambar…</option>
+                      {media.map((item) => (
+                        <option key={item.path} value={item.path}>
+                          {item.alt ? `${item.alt} — ${item.path}` : item.path}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-slate-400">
+                      Belum ada gambar di pustaka. Unggah lewat menu Media, atau tulis path manual di atas.
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </Field>
           );
         })}

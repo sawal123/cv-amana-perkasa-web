@@ -4,6 +4,7 @@ import SettingsEditor from "@/components/admin/settings-editor";
 import { Card } from "@/components/admin/ui";
 import { SETTING_TABS, isSettingsGroup, tabFor } from "@/lib/admin/settings-fields";
 import { loadSettings } from "@/lib/content";
+import { listMedia } from "@/lib/media";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export default async function SettingsGroupPage({ params }: { params: Promise<{ 
 
   const settings = await loadSettings();
   const values = settings[tab.group] as unknown as Record<string, unknown>;
+  // Media powers the image picker; a broken database there must not hide the form.
+  const media = await listMedia().catch(() => []);
 
   return (
     <div className="space-y-6">
@@ -37,7 +40,13 @@ export default async function SettingsGroupPage({ params }: { params: Promise<{ 
         </div>
       </Card>
 
-      <SettingsEditor group={tab.group} label={tab.label} fields={tab.fields} values={values} />
+      <SettingsEditor
+        group={tab.group}
+        label={tab.label}
+        fields={tab.fields}
+        values={values}
+        media={media.map((item) => ({ path: item.path, alt: item.alt }))}
+      />
     </div>
   );
 }

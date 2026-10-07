@@ -5,6 +5,8 @@ export type SiteSettings = {
     company: string;
     shortName: string;
     initials: string;
+    /** Optional official logo under /uploads or /projects. Empty means the initials mark. */
+    logo: string;
     tagline: string;
     navCta: string;
     copyright: string;
