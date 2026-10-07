@@ -17,17 +17,18 @@ export function isQuotationStatus(value: unknown): value is QuotationStatus {
 /**
  * Digits-only phone number in the form WhatsApp Click-to-Chat expects.
  *
- * Indonesian local numbers lead with a trunk 0 (08…); WhatsApp wants the country
- * code instead, so the leading 0 becomes 62. Numbers already written in
- * international form — with or without an explicit `+` — are returned unchanged
- * apart from punctuation.
+ * Only Indonesian mobile numbers — which lead with the 08 trunk prefix — get the
+ * local-to-country conversion, so `08…` becomes `62…`. Any other leading 0 (for
+ * example a `02…` landline) is left exactly as entered rather than being rewritten
+ * with a country code, and numbers already in international form are returned
+ * unchanged apart from punctuation.
  *
  * This only affects the generated URL. The value stored in the database stays the
  * form's normalized `request.phone` and is never rewritten here.
  */
 export function toWhatsAppNumber(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-  return digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+  return digits.startsWith("08") ? `62${digits.slice(1)}` : digits;
 }
 
 export const MAX_MESSAGE = 3000;

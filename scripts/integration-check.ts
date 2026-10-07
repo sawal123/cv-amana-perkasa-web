@@ -615,6 +615,7 @@ async function main() {
     ["+62 812-3456-7890", "6281234567890"],
     ["6281234567890", "6281234567890"],
     ["15551234567", "15551234567"],
+    ["02012345678", "02012345678"],
   ];
   for (const [input, expected] of whatsappCases) {
     check(`toWhatsAppNumber(${JSON.stringify(input)}) = ${expected}`, toWhatsAppNumber(input) === expected);
