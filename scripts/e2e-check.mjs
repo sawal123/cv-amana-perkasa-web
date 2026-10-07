@@ -168,7 +168,7 @@ try {
 
   // No logo configured: the initials mark must still render (backward compatible).
   const initialsHtml = await (await fetch(`${origin}/`)).text();
-  check("empty logo falls back to the initials mark", initialsHtml.includes(">AP<"), "initials mark missing");
+  check("empty logo falls back to the initials mark", initialsHtml.includes(">AP<"));
 
   await connection.query(
     "INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png'), (?, ?, 'image/png')",

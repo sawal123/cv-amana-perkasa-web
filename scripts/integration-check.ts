@@ -22,7 +22,7 @@ import {
 } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { loadContent } from "@/lib/content";
-import { MAX_UPLOAD_BYTES, listMedia, removeMedia, saveUpload, uploadDir } from "@/lib/media";
+import { MAX_UPLOAD_BYTES, listMedia, mediaUsage, removeMedia, saveUpload, uploadDir } from "@/lib/media";
 import { TABLES, type Payload } from "@/lib/admin/fields";
 import { SETTINGS_SCHEMA_BY_GROUP } from "@/lib/admin/settings-fields";
 import { SETTINGS_GROUPS } from "@/lib/types";
@@ -395,6 +395,68 @@ async function main() {
   check("foto team URL eksternal ditolak", !teamSchema.safeParse({ ...teamBase, photo: "https://evil.example/foto.png" }).success);
   check("foto team path traversal ditolak", !teamSchema.safeParse({ ...teamBase, photo: "/uploads/../secret.png" }).success);
   check("loadContent membawa field foto team", content.team.every((member) => typeof member.photo === "string"));
+
+  // -------------------------------------------- settings media protection
+  // A media file chosen for identity.logo / hero.image / seo.ogImage is a real
+  // reference: the Media Manager must refuse to delete it, exactly as it does
+  // for project, team, and gallery uses.
+  const brand = await saveUpload(
+    fakeFile("brand.png", Buffer.concat([PNG_HEADER, Buffer.alloc(48)]), "image/png"),
+    "Brand uji",
+  );
+  check("upload untuk tes settings", brand.ok, brand.ok ? brand.item.path : brand.error);
+
+  if (brand.ok) {
+    const brandPath = brand.item.path;
+    const originals = new Map<string, string>();
+    for (const key of ["identity", "hero", "seo"]) {
+      const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, key));
+      if (row) originals.set(key, row.value);
+    }
+
+    const setSetting = async (key: string, patch: Record<string, string>) => {
+      const base = originals.get(key);
+      const parsed = base ? (JSON.parse(base) as Record<string, unknown>) : {};
+      await db
+        .update(settingsTable)
+        .set({ value: JSON.stringify({ ...parsed, ...patch }) })
+        .where(eq(settingsTable.key, key));
+    };
+
+    try {
+      await setSetting("identity", { logo: brandPath });
+      check("mediaUsage menghitung identity.logo", (await mediaUsage(brandPath)) >= 1);
+      check("media dipakai identity.logo ditolak", !(await removeMedia(brand.item.id)).ok);
+
+      await setSetting("hero", { image: brandPath });
+      check("mediaUsage menghitung hero.image", (await mediaUsage(brandPath)) >= 2);
+      check("media dipakai hero.image ditolak", !(await removeMedia(brand.item.id)).ok);
+
+      await setSetting("seo", { ogImage: brandPath });
+      check("mediaUsage menjumlahkan ketiga referensi settings", (await mediaUsage(brandPath)) === 3);
+      check("media dipakai seo.ogImage ditolak", !(await removeMedia(brand.item.id)).ok);
+
+      // A malformed settings document is skipped, not thrown, and must not
+      // disable protection coming from the other rows.
+      await db.update(settingsTable).set({ value: "{ bukan json" }).where(eq(settingsTable.key, "seo"));
+      const afterMalformed = await mediaUsage(brandPath);
+      check("mediaUsage tidak crash pada JSON rusak", Number.isFinite(afterMalformed) && afterMalformed >= 2);
+      check("proteksi row lain tetap aktif saat ada JSON rusak", !(await removeMedia(brand.item.id)).ok);
+
+      // Clearing every reference frees the file for deletion.
+      await setSetting("identity", { logo: "" });
+      await setSetting("hero", { image: "" });
+      await setSetting("seo", { ogImage: "" });
+      check("mediaUsage 0 setelah referensi settings dikosongkan", (await mediaUsage(brandPath)) === 0);
+      const freed = await removeMedia(brand.item.id);
+      check("media bisa dihapus setelah referensi settings dikosongkan", freed.ok, freed.ok ? "" : freed.error);
+    } finally {
+      for (const [key, value] of originals) {
+        await db.update(settingsTable).set({ value }).where(eq(settingsTable.key, key));
+      }
+      await removeMedia(brand.item.id).catch(() => undefined);
+    }
+  }
 }
 
 main()
