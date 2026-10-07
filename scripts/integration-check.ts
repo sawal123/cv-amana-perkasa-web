@@ -10,7 +10,8 @@
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { eq } from "drizzle-orm";
-import { adminUsers, settings as settingsTable } from "@/lib/db/schema";
+import { defaultContent } from "@/data/site";
+import { adminUsers, quotationRequests, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
@@ -25,6 +26,14 @@ import { loadContent } from "@/lib/content";
 import { MAX_UPLOAD_BYTES, listMedia, mediaUsage, removeMedia, saveUpload, uploadDir } from "@/lib/media";
 import { TABLES, type Payload } from "@/lib/admin/fields";
 import { SETTINGS_SCHEMA_BY_GROUP } from "@/lib/admin/settings-fields";
+import {
+  getQuotationRequest,
+  isQuotationStatus,
+  listQuotationRequests,
+  submitQuotation,
+  toWhatsAppNumber,
+  updateQuotationStatus,
+} from "@/lib/quotation";
 import { SETTINGS_GROUPS } from "@/lib/types";
 
 let failures = 0;
@@ -456,6 +465,160 @@ async function main() {
       }
       await removeMedia(brand.item.id).catch(() => undefined);
     }
+  }
+
+  // ------------------------------------------------------------ why choose us
+  const whyBefore = await store.listRows("why_choose_us");
+  check("why_choose_us seed terisi", whyBefore.length === 4, `rows=${whyBefore.length}`);
+  check("why_choose_us posisi rapat 1..n", whyBefore.every((row, index) => row.position === index + 1));
+
+  await store.saveRow("why_choose_us", { title: "TEST KEUNGGULAN", description: "Dibuat oleh integration check." });
+  const whyAfter = await store.listRows("why_choose_us");
+  check("why_choose_us insert menambah baris", whyAfter.length === whyBefore.length + 1);
+  const createdWhy = whyAfter.find((row) => row.values.title === "TEST KEUNGGULAN");
+  check("why_choose_us baris baru tayang", createdWhy?.published === true);
+
+  const publicWhy = await loadContent();
+  check("why_choose_us tayang muncul di konten publik", publicWhy.whyChooseUs.some((row) => row.title === "TEST KEUNGGULAN"));
+
+  if (createdWhy) {
+    await store.moveRow("why_choose_us", createdWhy.id, -1);
+    const movedWhy = await store.listRows("why_choose_us");
+    check("why_choose_us bisa diurutkan", movedWhy[movedWhy.length - 2].id === createdWhy.id);
+
+    await store.setPublished("why_choose_us", createdWhy.id, false);
+    check("why_choose_us disembunyikan hilang dari publik", !(await loadContent()).whyChooseUs.some((row) => row.id === createdWhy.id));
+    await store.setPublished("why_choose_us", createdWhy.id, true);
+    check("why_choose_us tayang kembali", (await loadContent()).whyChooseUs.some((row) => row.id === createdWhy.id));
+
+    check("why_choose_us judul wajib", await rejects(() => store.saveRow("why_choose_us", { title: "", description: "x" })));
+
+    await store.deleteRow("why_choose_us", createdWhy.id);
+    check("why_choose_us bisa dihapus", (await store.listRows("why_choose_us")).length === whyBefore.length);
+  }
+
+  // Every row hidden is an empty list, not an error.
+  const whyIds = (await store.listRows("why_choose_us")).map((row) => row.id);
+  for (const id of whyIds) await store.setPublished("why_choose_us", id, false);
+  const emptyWhy = await loadContent();
+  check("why_choose_us tanpa item tayang = array kosong", Array.isArray(emptyWhy.whyChooseUs) && emptyWhy.whyChooseUs.length === 0);
+  for (const id of whyIds) await store.setPublished("why_choose_us", id, true);
+
+  check("fallback site.json memuat whyChooseUs", defaultContent.whyChooseUs.length === 4);
+  check("fallback site.json memuat settings whyUs", defaultContent.settings.whyUs.kicker.length > 0);
+
+  // --------------------------------------------------------- quotation intake
+  const validSubmission: Record<string, unknown> = {
+    name: "  Budi Santoso  ",
+    company: "  PT Contoh  ",
+    phone: "  +62 812-3456-7890 ",
+    email: "  budi@example.com  ",
+    eventType: "  Corporate Event  ",
+    eventDate: "2025-08-17",
+    location: "  Medan  ",
+    guestCount: "  500 orang  ",
+    budgetRange: "  Rp50-100 juta  ",
+    message: "  Kami butuh event gathering 500 orang.  ",
+    consent: true,
+  };
+
+  const quotesBefore = (await listQuotationRequests()).length;
+  const createdQuote = await submitQuotation(validSubmission);
+  check("quotation valid diterima", createdQuote.ok);
+  const afterValid = await listQuotationRequests();
+  check("satu baris quotation dibuat", afterValid.length === quotesBefore + 1);
+  const createdRow = afterValid.find((row) => row.name === "Budi Santoso");
+  check(
+    "nilai quotation di-trim",
+    createdRow?.company === "PT Contoh" &&
+      createdRow?.phone === "+62 812-3456-7890" &&
+      createdRow?.message === "Kami butuh event gathering 500 orang." &&
+      createdRow?.eventType === "Corporate Event",
+  );
+  check("status quotation selalu 'new'", createdRow?.status === "new");
+
+  const minimal = await submitQuotation({
+    name: "Ani",
+    phone: "08123456789",
+    eventType: "Gathering",
+    message: "Butuh gathering kecil.",
+    consent: true,
+  });
+  check("quotation minimal (opsional kosong) diterima", minimal.ok);
+  const minimalRow = (await listQuotationRequests()).find((row) => row.name === "Ani");
+  check(
+    "field opsional default kosong",
+    minimalRow?.company === "" &&
+      minimalRow?.email === "" &&
+      minimalRow?.eventDate === "" &&
+      minimalRow?.location === "" &&
+      minimalRow?.guestCount === "" &&
+      minimalRow?.budgetRange === "",
+  );
+
+  const beforeInvalid = (await listQuotationRequests()).length;
+  const invalids: Array<[string, Record<string, unknown>]> = [
+    ["nama kosong", { ...validSubmission, name: "   " }],
+    ["nama terlalu pendek", { ...validSubmission, name: "A" }],
+    ["telepon terlalu pendek", { ...validSubmission, phone: "123" }],
+    ["telepon karakter aneh", { ...validSubmission, phone: "abc-def-!!!!" }],
+    ["email tidak valid", { ...validSubmission, email: "bukan-email" }],
+    ["jenis event kosong", { ...validSubmission, eventType: "" }],
+    ["tanggal salah format", { ...validSubmission, eventDate: "17-08-2025" }],
+    ["tanggal tidak nyata", { ...validSubmission, eventDate: "2025-02-31" }],
+    ["nama terlalu panjang", { ...validSubmission, name: "x".repeat(200) }],
+    ["pesan terlalu pendek", { ...validSubmission, message: "short" }],
+    ["consent false", { ...validSubmission, consent: false }],
+  ];
+  for (const [label, payload] of invalids) {
+    const result = await submitQuotation(payload);
+    check(`quotation menolak ${label}`, !result.ok && Object.keys(result.errors).length > 0);
+  }
+  check("tidak ada baris dibuat dari penolakan", (await listQuotationRequests()).length === beforeInvalid);
+
+  // Honeypot: filled silently, never stored.
+  const beforeHoneypot = (await listQuotationRequests()).length;
+  const honeypot = await submitQuotation({ ...validSubmission, website: "spam.example" });
+  check("honeypot mengembalikan sukses generik", honeypot.ok);
+  check("honeypot tidak membuat baris", (await listQuotationRequests()).length === beforeHoneypot);
+
+  // Client-supplied status/id are stripped; the server decides.
+  const injected = await submitQuotation({ ...validSubmission, name: "Inject Test", status: "closed", id: 999, created_at: "x" });
+  check("kiriman dengan field ekstra diterima", injected.ok);
+  const injectedRow = (await listQuotationRequests()).find((row) => row.name === "Inject Test");
+  check("status tetap 'new' meski client mengirim status", injectedRow?.status === "new");
+
+  // Status transitions and invalid values.
+  if (injectedRow) {
+    for (const status of ["contacted", "quoted", "closed"]) {
+      check(`status ${status} diterima`, (await updateQuotationStatus(injectedRow.id, status)).ok);
+    }
+    check("status kembali ke new", (await updateQuotationStatus(injectedRow.id, "new")).ok);
+    for (const bad of ["hacked", "deleted", "", "CLOSED", "NEW"]) {
+      check(`status ${JSON.stringify(bad)} ditolak`, !(await updateQuotationStatus(injectedRow.id, bad)).ok);
+    }
+    check("isQuotationStatus benar", isQuotationStatus("new") && !isQuotationStatus("hacked"));
+    check("getQuotationRequest mengembalikan baris", (await getQuotationRequest(injectedRow.id))?.id === injectedRow.id);
+    check("getQuotationRequest id tidak valid = null", (await getQuotationRequest(-1)) === null);
+  }
+
+  // Clean up the rows this test created; there is no delete feature by design.
+  for (const id of [createdQuote.ok ? createdQuote.id : 0, minimal.ok ? minimal.id : 0, injected.ok ? injected.id : 0]) {
+    if (id > 0) await db.delete(quotationRequests).where(eq(quotationRequests.id, id));
+  }
+  check("baris uji quotation dibersihkan", (await listQuotationRequests()).length === quotesBefore);
+
+  // ------------------------------------------------ whatsapp number helper
+  const whatsappCases: Array<[string, string]> = [
+    ["081234567890", "6281234567890"],
+    ["08 1234-567890", "6281234567890"],
+    ["+62 812-3456-7890", "6281234567890"],
+    ["6281234567890", "6281234567890"],
+    ["15551234567", "15551234567"],
+    ["02012345678", "02012345678"],
+  ];
+  for (const [input, expected] of whatsappCases) {
+    check(`toWhatsAppNumber(${JSON.stringify(input)}) = ${expected}`, toWhatsAppNumber(input) === expected);
   }
 }
 

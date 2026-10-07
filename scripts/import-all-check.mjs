@@ -151,6 +151,8 @@ async function verifySchema(connection, label) {
   check(`${label}: project_images ada`, await hasTable(connection, "project_images"));
   check(`${label}: FK project_images -> projects ada`, await hasForeignKey(connection));
   check(`${label}: company_legalities ada`, await hasTable(connection, "company_legalities"));
+  check(`${label}: why_choose_us ada`, await hasTable(connection, "why_choose_us"));
+  check(`${label}: quotation_requests ada`, await hasTable(connection, "quotation_requests"));
   check(`${label}: media.width sudah tidak ada`, !(await exists(connection, "media", "width")));
   check(`${label}: media.height sudah tidak ada`, !(await exists(connection, "media", "height")));
 }
@@ -188,6 +190,8 @@ try {
   check("Test A: import ke database baru berhasil", first > 0, `${first} pernyataan`);
   await verifySchema(connection, "Test A");
   check("Test A: konten ter-seed", (await count(connection, "projects")) === 10, `projects=${await count(connection, "projects")}`);
+  check("Test A: why_choose_us ter-seed", (await count(connection, "why_choose_us")) === 4, `why_choose_us=${await count(connection, "why_choose_us")}`);
+  check("Test A: quotation_requests kosong", (await count(connection, "quotation_requests")) === 0);
   check("Test A: settings ter-seed", (await count(connection, "settings")) >= 10);
   check("Test A: tidak ada admin dari file", (await count(connection, "admin_users")) === 0);
 
@@ -195,6 +199,8 @@ try {
   check("Test B: import kedua berhasil", second > 0, `${second} pernyataan`);
   await verifySchema(connection, "Test C");
   check("Test C: konten tidak terduplikasi", (await count(connection, "projects")) === 10);
+  check("Test C: why_choose_us tidak terduplikasi", (await count(connection, "why_choose_us")) === 4);
+  check("Test C: quotation_requests tetap kosong", (await count(connection, "quotation_requests")) === 0);
 } finally {
   await connection.end();
 }

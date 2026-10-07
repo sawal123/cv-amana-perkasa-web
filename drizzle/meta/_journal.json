@@ -15,6 +15,13 @@
       "when": 1791276362779,
       "tag": "0001_project_gallery_and_legalities",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1791356895918,
+      "tag": "0002_why_choose_us_and_quotation_requests",
+      "breakpoints": true
     }
   ]
 }

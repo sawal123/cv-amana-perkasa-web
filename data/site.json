@@ -37,6 +37,11 @@
       "heading": "Portfolio event.",
       "description": "Ganti judul, deskripsi, kategori, dan foto asli project melalui panel admin."
     },
+    "whyUs": {
+      "kicker": "Kenapa Memilih Kami",
+      "heading": "Partner event yang bekerja terstruktur dari awal hingga selesai.",
+      "description": "Kami menggabungkan perencanaan, koordinasi, kreativitas, dan kontrol lapangan agar setiap detail acara tetap berjalan sesuai tujuan."
+    },
     "process": {
       "kicker": "Cara Kerja",
       "heading": "Workflow yang terstruktur."
@@ -59,7 +64,12 @@
       "email": "email@perusahaan.com",
       "address": "Alamat perusahaan dapat diganti melalui panel admin.",
       "instagram": "@amanaperkasa",
-      "whatsapp": ""
+      "whatsapp": "",
+      "formHeading": "Minta Penawaran Event",
+      "formDescription": "Isi brief singkat kebutuhan acara Anda. Tim kami akan meninjau kebutuhan tersebut sebelum menghubungi Anda.",
+      "submitLabel": "Kirim Permintaan Penawaran",
+      "successHeading": "Permintaan berhasil dikirim.",
+      "successDescription": "Terima kasih. Tim kami akan menghubungi Anda melalui kontak yang diberikan."
     },
     "seo": {
       "title": "CV AMANA PERKASA | Event Service & Creative Production",
@@ -88,6 +98,12 @@
     { "id": 8, "title": "Gala Dinner", "category": "Corporate Gathering", "image": "/projects/gala-dinner.png", "description": "Banquet dan gala dinner dengan atmosfer premium, stage, table setting, dan ambience lighting.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
     { "id": 9, "title": "Graduation Event", "category": "Education Event", "image": "/projects/graduation.png", "description": "Konsep acara kelulusan dengan stage formal, aisle, seating, dan dekorasi institusional.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] },
     { "id": 10, "title": "Religious Gathering", "category": "Community Event", "image": "/projects/religious-event.png", "description": "Acara keagamaan dengan setting panggung yang rapi, seating terorganisir, dan dukungan teknis.", "client": "", "location": "", "year": "", "scope": "", "gallery": [] }
+  ],
+  "whyChooseUs": [
+    { "id": 1, "title": "Satu Jalur Koordinasi", "description": "Konsep, produksi, vendor, kebutuhan teknis, dan operasional dikoordinasikan dalam alur kerja yang jelas." },
+    { "id": 2, "title": "Perencanaan Terukur", "description": "Timeline, scope pekerjaan, kebutuhan produksi, dan checkpoint disusun sejak awal agar pelaksanaan lebih terkendali." },
+    { "id": 3, "title": "Eksekusi Adaptif", "description": "Tim lapangan siap merespons perubahan kondisi acara tanpa kehilangan kontrol terhadap rundown dan kebutuhan utama." },
+    { "id": 4, "title": "Detail yang Konsisten", "description": "Visual, teknis, flow tamu, serta kebutuhan operasional diperhatikan hingga acara selesai." }
   ],
   "team": [
     { "id": 1, "role": "Director", "name": "Nama Direktur", "description": "Direction & Client Relations", "photo": "" },

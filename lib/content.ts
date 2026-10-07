@@ -8,6 +8,7 @@ import {
   services as servicesTable,
   settings as settingsTable,
   teamMembers as teamTable,
+  whyChooseUs as whyUsTable,
   workflowSteps as workflowTable,
 } from "@/lib/db/schema";
 import { SETTINGS_GROUPS, type GalleryImage, type SiteContent, type SiteSettings } from "@/lib/types";
@@ -91,9 +92,10 @@ export async function loadContent(): Promise<SiteContent> {
 
   try {
     const db = getDb();
-    const [serviceRows, projectRows, teamRows, workflowRows, galleryRows, legalityRows] = await Promise.all([
+    const [serviceRows, projectRows, whyUsRows, teamRows, workflowRows, galleryRows, legalityRows] = await Promise.all([
       db.select().from(servicesTable).where(eq(servicesTable.published, true)).orderBy(asc(servicesTable.position), asc(servicesTable.id)),
       db.select().from(projectsTable).where(eq(projectsTable.published, true)).orderBy(asc(projectsTable.position), asc(projectsTable.id)),
+      db.select().from(whyUsTable).where(eq(whyUsTable.published, true)).orderBy(asc(whyUsTable.position), asc(whyUsTable.id)),
       db.select().from(teamTable).where(eq(teamTable.published, true)).orderBy(asc(teamTable.position), asc(teamTable.id)),
       db.select().from(workflowTable).where(eq(workflowTable.published, true)).orderBy(asc(workflowTable.position), asc(workflowTable.id)),
       db.select().from(projectImagesTable).orderBy(asc(projectImagesTable.position), asc(projectImagesTable.id)),
@@ -124,6 +126,7 @@ export async function loadContent(): Promise<SiteContent> {
         scope: r.scope,
         gallery: galleryByProject.get(r.id) ?? [],
       })),
+      whyChooseUs: whyUsRows.map((r) => ({ id: r.id, title: r.title, description: r.description })),
       team: teamRows.map((r) => ({ id: r.id, role: r.role, name: r.name, description: r.description, photo: r.photo })),
       workflow: workflowRows.map((r) => ({ id: r.id, no: r.no, title: r.title, description: r.description })),
       legalities: legalityRows.map((r) => ({ id: r.id, title: r.title, value: r.value, description: r.description })),
@@ -135,7 +138,7 @@ export async function loadContent(): Promise<SiteContent> {
 }
 
 function emptyLists() {
-  return { services: [], projects: [], team: [], workflow: [], legalities: [] };
+  return { services: [], projects: [], whyChooseUs: [], team: [], workflow: [], legalities: [] };
 }
 
 export async function loadSettings(): Promise<SiteSettings> {

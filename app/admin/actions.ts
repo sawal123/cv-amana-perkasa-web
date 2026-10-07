@@ -17,6 +17,7 @@ import * as gallery from "@/lib/admin/gallery";
 import { MAX_CAPTION } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { MAX_UPLOAD_BYTES, removeMedia, saveUpload, setMediaAlt } from "@/lib/media";
+import { submitQuotation, updateQuotationStatus } from "@/lib/quotation";
 
 export type ActionState = { ok: boolean; message?: string; errors?: Record<string, string> };
 
@@ -335,6 +336,47 @@ export async function moveGalleryImageAction(id: number, delta: -1 | 1): Promise
     const result = await gallery.moveGalleryImage(parsedId.data, delta);
     if (!result.ok) return { ok: false, message: result.error };
     revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+// ------------------------------------------------------ quotation requests
+
+/**
+ * Public endpoint — no requireAdmin(), it is reachable by anyone.
+ *
+ * Nothing about the request is trusted: honeypot, zod validation, trimming and
+ * the insert (with a server-set status of "new") all live in lib/quotation.ts,
+ * keyed only by known columns. A database failure returns a fixed message so no
+ * SQL, host name, or stack trace can leak to the visitor.
+ */
+export async function submitQuotationAction(values: Record<string, unknown>): Promise<ActionState> {
+  try {
+    const result = await submitQuotation(values);
+    if (!result.ok) return { ok: false, errors: result.errors };
+    return OK;
+  } catch {
+    return {
+      ok: false,
+      message:
+        "Permintaan belum dapat dikirim. Silakan coba kembali atau hubungi kami melalui WhatsApp.",
+    };
+  }
+}
+
+export async function updateQuotationStatusAction(id: number, status: string): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = z.number().int().positive().safeParse(id);
+  if (!parsedId.success) return notFoundResult("Permintaan");
+
+  try {
+    const result = await updateQuotationStatus(parsedId.data, status);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidatePath("/admin/quotation-requests");
+    revalidatePath(`/admin/quotation-requests/${parsedId.data}`);
     return OK;
   } catch {
     return databaseUnavailable();

@@ -268,6 +268,71 @@ try {
   const projectsPage = await grab("/admin/content/projects", validToken);
   check("admin project list shows seeded rows", projectsPage.body.includes("Corporate Conference"));
   check("admin media page renders", (await grab("/admin/media", validToken)).body.includes("Pustaka gambar"));
+
+  // ---- why choose us ---------------------------------------------------
+  const WHY = "E2E-WHY";
+  await connection.query(
+    "INSERT INTO why_choose_us (title, description, position, published) VALUES (?, ?, 50, 1), (?, ?, 51, 0)",
+    [`${WHY}-TAYANG`, `${WHY}-DESC-TAYANG`, `${WHY}-SEMBUNYI`, `${WHY}-DESC-SEMBUNYI`],
+  );
+
+  const whyHtml = await (await fetch(`${origin}/`)).text();
+  check("why choose us section renders", whyHtml.includes('id="why-us"'));
+  check(
+    "published why choose us item renders",
+    whyHtml.includes(`${WHY}-TAYANG`) && whyHtml.includes(`${WHY}-DESC-TAYANG`),
+  );
+  check("unpublished why choose us item is withheld", !whyHtml.includes(`${WHY}-SEMBUNYI`));
+  check("seeded why choose us item renders", whyHtml.includes("Satu Jalur Koordinasi"));
+
+  await connection.query("DELETE FROM why_choose_us WHERE title LIKE ?", [`${WHY}%`]);
+  const whyLeft = (await connection.query("SELECT COUNT(*) AS n FROM why_choose_us WHERE title LIKE ?", [`${WHY}%`]))[0][0].n;
+  check("why choose us test rows cleaned up", whyLeft === 0);
+
+  // ---- public quotation form renders -----------------------------------
+  check(
+    "public quotation form renders",
+    whyHtml.includes('id="q-name"') &&
+      whyHtml.includes('id="q-consent"') &&
+      whyHtml.includes('type="email"') &&
+      whyHtml.includes('type="tel"') &&
+      whyHtml.includes('type="date"'),
+  );
+  check("honeypot field is present", whyHtml.includes('name="website"'));
+
+  // ---- quotation requests: admin list, detail, escaping ----------------
+  const QT = "E2E-QUOTE";
+  const XSS = "<script>alert(1)</script>";
+  await connection.query(
+    "INSERT INTO quotation_requests (name, company, phone, email, event_type, event_date, location, guest_count, budget_range, message, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')",
+    [`${QT}-NAME`, `${QT}-PT`, "081234567890", "quote@example.com", "Corporate Event", "2025-08-17", "Medan", "500 orang", "Rp50-100 juta", `${QT} brief ${XSS}`],
+  );
+  const [quoteRow] = (
+    await connection.query("SELECT id FROM quotation_requests WHERE name = ?", [`${QT}-NAME`])
+  )[0];
+
+  const listPage = await grab("/admin/quotation-requests", validToken);
+  check("admin quotation list renders the request", listPage.body.includes(`${QT}-NAME`));
+  check("admin quotation list shows company and event type", listPage.body.includes(`${QT}-PT`) && listPage.body.includes("Corporate Event"));
+
+  const detail = await grab(`/admin/quotation-requests/${quoteRow.id}`, validToken);
+  check("admin quotation detail renders the request", detail.body.includes(`${QT}-NAME`) && detail.body.includes("Medan"));
+  check(
+    "admin quotation WhatsApp link is normalized to country code",
+    detail.body.includes("https://wa.me/6281234567890") && !detail.body.includes("wa.me/081234567890"),
+  );
+  check("quotation brief is escaped, not executed", !detail.body.includes(XSS) && detail.body.includes("&lt;script&gt;"));
+  check(
+    "quotation status control renders all options",
+    detail.body.includes("Baru") &&
+      detail.body.includes("Sudah Dihubungi") &&
+      detail.body.includes("Penawaran Dikirim") &&
+      detail.body.includes("Selesai"),
+  );
+
+  await connection.query("DELETE FROM quotation_requests WHERE name LIKE ?", [`${QT}%`]);
+  const quoteLeft = (await connection.query("SELECT COUNT(*) AS n FROM quotation_requests WHERE name LIKE ?", [`${QT}%`]))[0][0].n;
+  check("quotation test rows cleaned up", quoteLeft === 0);
 } finally {
   await connection.end();
 }
