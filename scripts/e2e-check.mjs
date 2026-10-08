@@ -190,7 +190,10 @@ try {
   const brandHtml = await (await fetch(`${origin}/`)).text();
   const logoRenders = brandHtml.split(`src="${logoPath}"`).length - 1;
   check("company logo renders in header and footer", logoRenders >= 2, `renders=${logoRenders}`);
-  check("logo carries the company alt text", brandHtml.includes('alt="CV AMANA PERKASA"'));
+  // Compare against the stored company name rather than a hardcoded one: an
+  // operator may legitimately rename the company in the admin panel.
+  const companyAlt = JSON.parse(identityBefore).company ?? "";
+  check("logo carries the company alt text", companyAlt.length > 0 && brandHtml.includes(`alt="${companyAlt}"`), `alt="${companyAlt}"`);
   check("initials mark disappears once a logo is set", !brandHtml.includes(">AP<"));
   if (firstTeam) {
     check("team photo renders on the public page", brandHtml.includes(`src="${teamPhotoPath}"`));
@@ -394,7 +397,7 @@ try {
 
   // ---- malformed stored canonical never 500s the homepage --------------
   const seoBefore = await snapshot("seo");
-  for (const bad of ["http://", "https://", "javascript:alert(1)", "ftp://example.com", "//evil.example", "not a url"]) {
+  for (const bad of ["http://", "https://", "javascript:alert(1)", "ftp://example.com", "//evil.example", "not a url", "https://example.com/about", "https://example.com/project/foo"]) {
     await connection.query("UPDATE settings SET `value` = JSON_SET(`value`, '$.canonical', ?) WHERE `key` = 'seo'", [bad]);
     const res = await fetch(`${origin}/`);
     await res.text();

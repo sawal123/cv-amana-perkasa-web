@@ -59,8 +59,8 @@ Akses di `/admin`, login dengan `ADMIN_USERNAME` / `ADMIN_PASSWORD` dari seed.
 
 - **Settings** — identitas, hero, tentang (termasuk statistik), teks tiap seksi,
   kontak (telepon, email, WhatsApp, alamat, Instagram), dan **SEO & meta**
-  (judul, description, keywords, OG image, URL kanonis — URL kanonis divalidasi
-  sebagai alamat absolut http/https)
+  (judul, description, keywords, OG image, URL kanonis — divalidasi sebagai
+  origin saja: absolut http/https tanpa path/query/hash)
 - **Layanan / Project / Tim & Management / Workflow / Legalitas / Keunggulan /
   Clients & Partners / Testimonials** — CRUD penuh: tambah, ubah, hapus, urut
   naik-turun, dan sembunyikan tanpa menghapus baris
@@ -325,7 +325,8 @@ memakai snapshot yang diambil sebelum mutasi). `production:preflight` dan
 - `/robots.txt` dan `/sitemap.xml` dihasilkan dari `SITE_URL` (tanpa menebak host
   dari header request). `/admin` dan `/api` tidak diiklankan ke crawler.
 - Canonical: prioritas `seo.canonical` valid → `SITE_URL` valid → tidak dirender.
-  Nilai rusak di database diabaikan dengan aman, tidak pernah membuat homepage 500.
+  Keduanya harus **origin saja** (tanpa path/query/hash); nilai berpath atau rusak
+  di database diabaikan dengan aman dan tidak pernah membuat homepage 500.
 - `/api/health` — readiness read-only (`200` siap / `503` belum siap).
 
 ## Berkas konten

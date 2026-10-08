@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { parseHttpUrl } from "@/lib/site-url";
+import { parseSiteOrigin } from "@/lib/site-url";
 
 /**
  * Readiness probe logic, kept out of the route handler so each piece can be
@@ -37,9 +37,12 @@ export const REQUIRED_COLUMNS = [
   { table: "projects", column: "outcome" },
 ] as const;
 
-/** Production requires HTTPS, so a plain-http SITE_URL is not "ready". */
+/**
+ * Production requires HTTPS *and* a strict origin: a SITE_URL carrying a path,
+ * query, hash or credentials is a misconfiguration, not a ready deployment.
+ */
 export function isProductionSiteOrigin(value: unknown): boolean {
-  const url = parseHttpUrl(value);
+  const url = parseSiteOrigin(value);
   return url !== null && url.protocol === "https:";
 }
 

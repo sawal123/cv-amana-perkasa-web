@@ -206,8 +206,11 @@ SITE_URL=https://domain-produksi.com
 ```
 
 `SITE_URL` adalah **origin deployment** (bukan field konten): URL absolut
-http/https, produksi wajib https, tanpa kredensial/query/hash, sebaiknya origin
-saja tanpa path.
+http/https, produksi wajib https, dan **wajib origin saja** — tanpa path, query,
+hash, atau kredensial. Nilai seperti `https://example.com/amana` **ditolak**
+(bukan dipotong diam-diam): preflight `FAIL` dan `/api/health` `degraded`,
+karena robots/sitemap/canonical/JSON-LD harus memakai origin yang sama persis
+dengan yang ditulis operator.
 
 ## 13. Restart
 

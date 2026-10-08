@@ -36,7 +36,7 @@ import {
   updateQuotationStatus,
 } from "@/lib/quotation";
 import { SETTINGS_GROUPS } from "@/lib/types";
-import { absoluteUrl, getSiteOrigin, parseHttpUrl, resolveCanonical } from "@/lib/site-url";
+import { absoluteUrl, getSiteOrigin, parseHttpUrl, parseSiteOrigin, resolveCanonical } from "@/lib/site-url";
 import { escapeJsonForScript, serializeJsonLd } from "@/lib/json-ld";
 import {
   checkConfig,
@@ -791,6 +791,22 @@ async function main() {
   check("parseHttpUrl menolak nilai kosong", parseHttpUrl("") === null && parseHttpUrl("   ") === null);
   check("parseHttpUrl menolak non-string", parseHttpUrl(null) === null && parseHttpUrl(undefined) === null);
 
+  // Strict origin parser: SITE_URL and the canonical must be an origin, no path.
+  check("parseSiteOrigin menerima origin tanpa slash", parseSiteOrigin("https://example.com") !== null);
+  check("parseSiteOrigin menerima origin dengan slash", parseSiteOrigin("https://example.com/") !== null);
+  check("parseSiteOrigin menerima http localhost:3000", parseSiteOrigin("http://localhost:3000") !== null);
+  check("parseSiteOrigin menolak path", parseSiteOrigin("https://example.com/app") === null);
+  check("parseSiteOrigin menolak path dengan slash", parseSiteOrigin("https://example.com/app/") === null);
+  check("parseSiteOrigin menolak subfolder satu karakter", parseSiteOrigin("https://example.com/a") === null);
+  check("parseSiteOrigin menolak query", parseSiteOrigin("https://example.com?a=1") === null);
+  check("parseSiteOrigin menolak hash", parseSiteOrigin("https://example.com#x") === null);
+  check("parseSiteOrigin menolak kredensial", parseSiteOrigin("https://user:pass@example.com") === null);
+  check("parseSiteOrigin menolak javascript:", parseSiteOrigin("javascript:alert(1)") === null);
+  check("parseSiteOrigin menolak ftp:", parseSiteOrigin("ftp://example.com") === null);
+  check("parseSiteOrigin menolak protocol-relative", parseSiteOrigin("//example.com") === null);
+  check("parseSiteOrigin menolak https:// tanpa host", parseSiteOrigin("https://") === null);
+  check("parseSiteOrigin menolak nilai kosong", parseSiteOrigin("") === null && parseSiteOrigin("   ") === null);
+
   const originalSiteUrl = process.env.SITE_URL;
   try {
     delete process.env.SITE_URL;
@@ -806,6 +822,19 @@ async function main() {
       "resolveCanonical mengabaikan canonical rusak lalu memakai SITE_URL",
       resolveCanonical("javascript:alert(1)") === "https://amana.example.com",
     );
+    check(
+      "resolveCanonical mengabaikan canonical berpath lalu memakai SITE_URL",
+      resolveCanonical("https://bad.example.com/path") === "https://amana.example.com",
+    );
+
+    // A path-bearing SITE_URL is a misconfiguration, not an origin to strip.
+    process.env.SITE_URL = "https://amana.example.com/app";
+    check("getSiteOrigin null untuk SITE_URL berpath", getSiteOrigin() === null);
+    check("resolveCanonical null saat canonical kosong & SITE_URL berpath", resolveCanonical("") === null);
+    check(
+      "canonical berpath + SITE_URL berpath = null",
+      resolveCanonical("https://bad.example.com/path") === null,
+    );
 
     process.env.SITE_URL = "not a url";
     check("getSiteOrigin null untuk SITE_URL tidak valid", getSiteOrigin() === null);
@@ -815,7 +844,13 @@ async function main() {
   }
 
   check("absoluteUrl menggabungkan path dengan origin", absoluteUrl("/uploads/a.png", "https://example.com") === "https://example.com/uploads/a.png");
-  check("absoluteUrl mempertahankan URL absolut", absoluteUrl("https://cdn.example.com/a.png", "https://example.com") === "https://cdn.example.com/a.png");
+  check("absoluteUrl mempertahankan URL absolut https", absoluteUrl("https://cdn.example.com/a.png", "https://example.com") === "https://cdn.example.com/a.png");
+  check("absoluteUrl mempertahankan URL absolut http", absoluteUrl("http://cdn.example.com/a.png", "https://example.com") === "http://cdn.example.com/a.png");
+  check("absoluteUrl menerima path site-relative lain", absoluteUrl("/other-site-relative-path.png", "https://example.com") === "https://example.com/other-site-relative-path.png");
+  check("absoluteUrl null untuk javascript:", absoluteUrl("javascript:alert(1)", "https://example.com") === null);
+  check("absoluteUrl null untuk ftp:", absoluteUrl("ftp://example.com/a.png", "https://example.com") === null);
+  check("absoluteUrl null untuk protocol-relative (tidak di-resolve ke origin)", absoluteUrl("//evil.example.com/a.png", "https://example.com") === null);
+  check("absoluteUrl null untuk relative tanpa slash awal", absoluteUrl("uploads/a.png", "https://example.com") === null);
   check("absoluteUrl null tanpa origin untuk path relatif", absoluteUrl("/uploads/a.png", null) === null);
   check("absoluteUrl null untuk string kosong", absoluteUrl("", "https://example.com") === null);
 
@@ -830,6 +865,9 @@ async function main() {
   check("canonical ftp ditolak", !canonicalValid("ftp://example.com"));
   check("canonical protocol-relative ditolak", !canonicalValid("//example.com"));
   check("canonical https:// tanpa host ditolak", !canonicalValid("https://"));
+  check("canonical berpath ditolak (https://example.com/about)", !canonicalValid("https://example.com/about"));
+  check("canonical berpath project ditolak", !canonicalValid("https://example.com/project/foo"));
+  check("canonical query ditolak", !canonicalValid("https://example.com?a=1"));
 
   // ----------------------------------------------------- JSON-LD XSS safety
   const dangerousName = "</script><script>alert(1)</script>";
@@ -845,7 +883,12 @@ async function main() {
   check("health: config ok untuk secret+https", checkConfig(okEnv).every((c) => c.ok));
   check("health: secret pendek ditolak", !checkConfig({ ...okEnv, AUTH_SECRET: "short" }).find((c) => c.name === "auth_secret")?.ok);
   check("health: SITE_URL http ditolak untuk produksi", !checkConfig({ ...okEnv, SITE_URL: "http://example.com" }).find((c) => c.name === "site_url")?.ok);
+  check("health: SITE_URL berpath ditolak", !isProductionSiteOrigin("https://example.com/app"));
+  check("health: SITE_URL berpath slash ditolak", !isProductionSiteOrigin("https://example.com/app/"));
   check("health: SITE_URL rusak ditolak", !isProductionSiteOrigin("javascript:alert(1)"));
+  check("health: SITE_URL origin valid diterima", isProductionSiteOrigin("https://example.com") && isProductionSiteOrigin("https://example.com/"));
+  const pathHealth = await runHealthChecks({ ...okEnv, SITE_URL: "https://example.com/app" });
+  check("health: SITE_URL berpath = degraded", pathHealth.status === "degraded", JSON.stringify(pathHealth.checks));
   check("health: uploads ada & writable", await checkUploadsWritable());
   check("health: uploads hilang = false", !(await checkUploadsWritable(join(process.cwd(), "public", "does-not-exist-xyz"))));
   check("health: database bisa dihubungi", await checkDatabaseReachable());

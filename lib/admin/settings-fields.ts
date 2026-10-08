@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SAFE_IMAGE_PATH } from "@/lib/admin/fields";
-import { parseHttpUrl } from "@/lib/site-url";
+import { parseSiteOrigin } from "@/lib/site-url";
 import { SETTINGS_GROUPS, type SettingsGroup } from "@/lib/types";
 
 export type SettingFieldDef = {
@@ -165,7 +165,7 @@ export const SETTING_TABS: SettingTab[] = [
       { name: "description", label: "Meta description", type: "textarea", maxLength: 320, help: "Panjang aman sekitar 150-160 karakter." },
       { name: "keywords", label: "Keywords", type: "text", maxLength: LONG, help: "Pisah dengan koma." },
       { name: "ogImage", label: "Gambar OG", type: "image", maxLength: 500 },
-      { name: "canonical", label: "URL kanonis", type: "url", maxLength: LONG, help: "mis. https://amanaperkasa.co.id — alamat absolut http/https. Kosongkan untuk memakai SITE_URL." },
+      { name: "canonical", label: "URL kanonis", type: "url", maxLength: LONG, help: "Origin saja, tanpa path — mis. https://amanaperkasa.co.id. Kosongkan untuk memakai SITE_URL." },
     ],
   },
 ];
@@ -187,9 +187,11 @@ export const SETTINGS_SCHEMA_BY_GROUP = Object.fromEntries(
             ? base.refine((v: unknown) => v === "" || SAFE_IMAGE_PATH.test(String(v)))
             : field.type === "url"
               // Empty is valid (SITE_URL then applies). Otherwise it must be a
-              // plain absolute http(s) URL — `javascript:`, `ftp:`, protocol-
-              // relative values and `https://` are all refused.
-              ? base.refine((v: unknown) => v === "" || parseHttpUrl(v) !== null)
+              // strict origin — an absolute http(s) URL with no path, query, hash
+              // or credentials. The site has one canonical route (`/`), so
+              // `https://example.com/about` is refused rather than accepted and
+              // then silently reduced at render time.
+              ? base.refine((v: unknown) => v === "" || parseSiteOrigin(v) !== null)
               : base;
       }
     }
