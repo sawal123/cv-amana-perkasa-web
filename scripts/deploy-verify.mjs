@@ -49,6 +49,12 @@ if (existsSync(serverFile)) {
   // Passenger, which patches http.Server.prototype.listen.
   check("server.js adalah startup Passenger (getRequestHandler)", server.includes("getRequestHandler"));
   check("server.js bukan startup default Next (start-server)", !server.includes("start-server"));
+  // Passenger does not guarantee the app root is the working directory, so cwd
+  // must be pinned to __dirname before app modules capture it.
+  check(
+    "server.js mem-pin working directory (process.chdir(__dirname))",
+    /process\.chdir\(\s*__dirname\s*\)/.test(server),
+  );
 }
 
 // ---------------------------------------------------------------- secret files

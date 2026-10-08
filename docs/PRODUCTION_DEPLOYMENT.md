@@ -194,6 +194,11 @@ Zip **isi** folder `deploy` (bukan foldernya).
 | Application URL | domain kamu, path kosong |
 | Application startup file | `server.js` |
 
+`server.js` menormalkan working directory ke application root (`process.chdir(__dirname)`)
+sebelum modul aplikasi dimuat, karena Passenger tidak menjamin `process.cwd()` sama
+dengan app root. Ini melindungi upload media dan pemeriksaan writable `public/uploads`
+di `/api/health`.
+
 ## 12. Environment variables
 
 Isi di **Setup Node.js App → Environment Variables** (bukan di dalam file build):
