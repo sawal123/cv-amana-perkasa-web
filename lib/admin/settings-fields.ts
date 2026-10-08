@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { SAFE_IMAGE_PATH } from "@/lib/admin/fields";
+import { parseHttpUrl } from "@/lib/site-url";
 import { SETTINGS_GROUPS, type SettingsGroup } from "@/lib/types";
 
 export type SettingFieldDef = {
   name: string;
   label: string;
-  type: "text" | "textarea" | "image" | "stats";
+  type: "text" | "textarea" | "image" | "stats" | "url";
   maxLength?: number;
   help?: string;
 };
@@ -164,7 +165,7 @@ export const SETTING_TABS: SettingTab[] = [
       { name: "description", label: "Meta description", type: "textarea", maxLength: 320, help: "Panjang aman sekitar 150-160 karakter." },
       { name: "keywords", label: "Keywords", type: "text", maxLength: LONG, help: "Pisah dengan koma." },
       { name: "ogImage", label: "Gambar OG", type: "image", maxLength: 500 },
-      { name: "canonical", label: "URL kanonis", type: "text", maxLength: LONG, help: "mis. https://amanaperkasa.co.id — isi untuk mengaktifkan metadataBase dan canonical." },
+      { name: "canonical", label: "URL kanonis", type: "url", maxLength: LONG, help: "mis. https://amanaperkasa.co.id — alamat absolut http/https. Kosongkan untuk memakai SITE_URL." },
     ],
   },
 ];
@@ -184,7 +185,12 @@ export const SETTINGS_SCHEMA_BY_GROUP = Object.fromEntries(
         shape[field.name] =
           field.type === "image"
             ? base.refine((v: unknown) => v === "" || SAFE_IMAGE_PATH.test(String(v)))
-            : base;
+            : field.type === "url"
+              // Empty is valid (SITE_URL then applies). Otherwise it must be a
+              // plain absolute http(s) URL — `javascript:`, `ftp:`, protocol-
+              // relative values and `https://` are all refused.
+              ? base.refine((v: unknown) => v === "" || parseHttpUrl(v) !== null)
+              : base;
       }
     }
     return [tab.group, z.object(shape).strict()];

@@ -6,13 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
     "db:seed": "tsx --env-file=.env scripts/seed.ts",
     "db:seed:sql": "tsx --env-file=.env scripts/seed.ts --emit-sql",
-    "deploy:pack": "node scripts/pack.mjs"
+    "content:check": "tsx --env-file=.env scripts/content-readiness.ts",
+    "production:preflight": "node --env-file=.env scripts/production-preflight.mjs",
+    "deploy:pack": "node scripts/pack.mjs && node scripts/deploy-verify.mjs",
+    "deploy:verify": "node scripts/deploy-verify.mjs",
+    "production:smoke": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",

@@ -9,6 +9,7 @@
  */
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { defaultContent } from "@/data/site";
 import { adminUsers, quotationRequests, settings as settingsTable } from "@/lib/db/schema";
@@ -35,6 +36,16 @@ import {
   updateQuotationStatus,
 } from "@/lib/quotation";
 import { SETTINGS_GROUPS } from "@/lib/types";
+import { absoluteUrl, getSiteOrigin, parseHttpUrl, resolveCanonical } from "@/lib/site-url";
+import { escapeJsonForScript, serializeJsonLd } from "@/lib/json-ld";
+import {
+  checkConfig,
+  checkDatabaseReachable,
+  checkSchema,
+  checkUploadsWritable,
+  isProductionSiteOrigin,
+  runHealthChecks,
+} from "@/lib/health";
 
 let failures = 0;
 function check(name: string, condition: boolean, detail = "") {
@@ -493,8 +504,13 @@ async function main() {
 
     check("why_choose_us judul wajib", await rejects(() => store.saveRow("why_choose_us", { title: "", description: "x" })));
 
+    // Swap the row back down before removing it: moveRow renumbers 1..n, so
+    // deleting straight after the up-move would leave its neighbour shifted by
+    // one and make a second run of this suite start from a non-dense state.
+    await store.moveRow("why_choose_us", createdWhy.id, 1);
     await store.deleteRow("why_choose_us", createdWhy.id);
     check("why_choose_us bisa dihapus", (await store.listRows("why_choose_us")).length === whyBefore.length);
+    check("why_choose_us posisi tetap rapat setelah hapus", (await store.listRows("why_choose_us")).every((row, index) => row.position === index + 1));
   }
 
   // Every row hidden is an empty list, not an error.
@@ -760,6 +776,85 @@ async function main() {
   for (const [input, expected] of whatsappCases) {
     check(`toWhatsAppNumber(${JSON.stringify(input)}) = ${expected}`, toWhatsAppNumber(input) === expected);
   }
+
+  // --------------------------------------------- SEO URL normalization / safety
+  check("parseHttpUrl menerima https absolut", parseHttpUrl("https://example.com")?.origin === "https://example.com");
+  check("parseHttpUrl menormalkan trailing slash", parseHttpUrl("https://example.com/")?.origin === "https://example.com");
+  check("parseHttpUrl menerima http", parseHttpUrl("http://example.com") !== null);
+  check("parseHttpUrl menolak javascript:", parseHttpUrl("javascript:alert(1)") === null);
+  check("parseHttpUrl menolak ftp:", parseHttpUrl("ftp://example.com") === null);
+  check("parseHttpUrl menolak protocol-relative //example.com", parseHttpUrl("//example.com") === null);
+  check("parseHttpUrl menolak https:// tanpa host", parseHttpUrl("https://") === null);
+  check("parseHttpUrl menolak kredensial", parseHttpUrl("https://user:pass@example.com") === null);
+  check("parseHttpUrl menolak query", parseHttpUrl("https://example.com/?a=1") === null);
+  check("parseHttpUrl menolak hash", parseHttpUrl("https://example.com/#x") === null);
+  check("parseHttpUrl menolak nilai kosong", parseHttpUrl("") === null && parseHttpUrl("   ") === null);
+  check("parseHttpUrl menolak non-string", parseHttpUrl(null) === null && parseHttpUrl(undefined) === null);
+
+  const originalSiteUrl = process.env.SITE_URL;
+  try {
+    delete process.env.SITE_URL;
+    check("getSiteOrigin null tanpa SITE_URL", getSiteOrigin() === null);
+    check("resolveCanonical null tanpa canonical & SITE_URL", resolveCanonical("") === null);
+    check("resolveCanonical mengabaikan canonical rusak", resolveCanonical("http://") === null);
+
+    process.env.SITE_URL = "https://amana.example.com/";
+    check("getSiteOrigin menormalkan SITE_URL", getSiteOrigin() === "https://amana.example.com");
+    check("resolveCanonical jatuh ke SITE_URL", resolveCanonical("") === "https://amana.example.com");
+    check("resolveCanonical memprioritaskan canonical", resolveCanonical("https://www.example.com/") === "https://www.example.com");
+    check(
+      "resolveCanonical mengabaikan canonical rusak lalu memakai SITE_URL",
+      resolveCanonical("javascript:alert(1)") === "https://amana.example.com",
+    );
+
+    process.env.SITE_URL = "not a url";
+    check("getSiteOrigin null untuk SITE_URL tidak valid", getSiteOrigin() === null);
+  } finally {
+    if (originalSiteUrl === undefined) delete process.env.SITE_URL;
+    else process.env.SITE_URL = originalSiteUrl;
+  }
+
+  check("absoluteUrl menggabungkan path dengan origin", absoluteUrl("/uploads/a.png", "https://example.com") === "https://example.com/uploads/a.png");
+  check("absoluteUrl mempertahankan URL absolut", absoluteUrl("https://cdn.example.com/a.png", "https://example.com") === "https://cdn.example.com/a.png");
+  check("absoluteUrl null tanpa origin untuk path relatif", absoluteUrl("/uploads/a.png", null) === null);
+  check("absoluteUrl null untuk string kosong", absoluteUrl("", "https://example.com") === null);
+
+  // --------------------------------------------- canonical CMS field validation
+  const seoSchema = SETTINGS_SCHEMA_BY_GROUP.seo;
+  const seoValues = content.settings.seo as unknown as Record<string, unknown>;
+  const canonicalValid = (value: string) => seoSchema.safeParse({ ...seoValues, canonical: value }).success;
+  check("canonical kosong valid", canonicalValid(""));
+  check("canonical https valid", canonicalValid("https://example.com"));
+  check("canonical https trailing slash valid", canonicalValid("https://www.example.com/"));
+  check("canonical javascript ditolak", !canonicalValid("javascript:alert(1)"));
+  check("canonical ftp ditolak", !canonicalValid("ftp://example.com"));
+  check("canonical protocol-relative ditolak", !canonicalValid("//example.com"));
+  check("canonical https:// tanpa host ditolak", !canonicalValid("https://"));
+
+  // ----------------------------------------------------- JSON-LD XSS safety
+  const dangerousName = "</script><script>alert(1)</script>";
+  const serialized = serializeJsonLd({ name: dangerousName });
+  check("JSON-LD tidak bisa keluar dari tag </script>", !serialized.includes("</script>"));
+  check("JSON-LD hasil tetap JSON valid", (JSON.parse(serialized) as { name: string }).name === dangerousName);
+  check("serializeJsonLd meng-escape < menjadi \\u003c", serializeJsonLd({ x: "<" }).includes("\\u003c"));
+  check("escapeJsonForScript meng-escape U+2028", escapeJsonForScript("\u2028") === "\\u2028");
+  check("escapeJsonForScript meng-escape &", escapeJsonForScript("a&b") === "a\\u0026b");
+
+  // ------------------------------------------------------------- health checks
+  const okEnv = { AUTH_SECRET: "x".repeat(32), SITE_URL: "https://example.com" };
+  check("health: config ok untuk secret+https", checkConfig(okEnv).every((c) => c.ok));
+  check("health: secret pendek ditolak", !checkConfig({ ...okEnv, AUTH_SECRET: "short" }).find((c) => c.name === "auth_secret")?.ok);
+  check("health: SITE_URL http ditolak untuk produksi", !checkConfig({ ...okEnv, SITE_URL: "http://example.com" }).find((c) => c.name === "site_url")?.ok);
+  check("health: SITE_URL rusak ditolak", !isProductionSiteOrigin("javascript:alert(1)"));
+  check("health: uploads ada & writable", await checkUploadsWritable());
+  check("health: uploads hilang = false", !(await checkUploadsWritable(join(process.cwd(), "public", "does-not-exist-xyz"))));
+  check("health: database bisa dihubungi", await checkDatabaseReachable());
+  check("health: schema lengkap", await checkSchema());
+  const health = await runHealthChecks(okEnv);
+  check("health: environment lengkap = ok", health.status === "ok", JSON.stringify(health.checks));
+  const degraded = await runHealthChecks({ AUTH_SECRET: "short", SITE_URL: "http://example.com" });
+  check("health: config rusak = degraded", degraded.status === "degraded");
+  check("health: tidak membocorkan nilai rahasia", !JSON.stringify(health).includes("x".repeat(32)));
 }
 
 main()

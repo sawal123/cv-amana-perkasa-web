@@ -1,12 +1,14 @@
 /**
- * Applies every drizzle/*.sql migration to DATABASE_URL, oldest file first.
+ * Applies every numbered drizzle migration (000X_*.sql) to DATABASE_URL, oldest
+ * file first. The generated combined artifacts and seed SQL are never applied —
+ * this command is migration-only.
  *
  *   npm run db:migrate
  *
  * Re-runnable: a statement that fails with ER_TABLE_EXISTS_ERROR (1050) or
  * ER_DUP_ENTRY (1061) is reported and skipped rather than aborting the run.
- * On the production host import drizzle/import-all.sql through phpMyAdmin
- * instead — that file has the drizzle-kit separators stripped and is plain SQL.
+ * When there is no direct MySQL access, import drizzle/migrate-all.sql through
+ * phpMyAdmin instead — same migrations, no seed content.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import mysql from "mysql2/promise";
@@ -33,8 +35,12 @@ async function main() {
   }
 
   const dir = new URL("../drizzle/", import.meta.url);
+  // Only the numbered drizzle migrations. The generated artifacts (import-all.sql,
+  // migrate-all.sql) and the seed rows (seed-data.sql) are excluded on purpose, so
+  // `db:migrate` is migration-only and never re-inserts starter content into a
+  // database whose operator deliberately removed it.
   const files = readdirSync(dir)
-    .filter((name) => name.endsWith(".sql") && name !== "import-all.sql")
+    .filter((name) => /^\d{4}_.*\.sql$/.test(name))
     .sort();
 
   if (files.length === 0) {

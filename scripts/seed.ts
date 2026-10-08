@@ -210,16 +210,41 @@ async function main() {
     // drizzle-kit breakpoint markers removed and each statement made re-runnable,
     // followed by the seed data.
     const dir = new URL("../drizzle/", import.meta.url);
+    // Generated artifacts are never inputs to the next generation, or each run
+    // would fold the previous output into itself.
+    const GENERATED = new Set(["import-all.sql", "migrate-all.sql", "seed-data.sql"]);
     const schemaFiles = readdirSync(dir)
-      .filter((name) => name.endsWith(".sql") && name !== "import-all.sql" && name !== "seed-data.sql")
+      .filter((name) => name.endsWith(".sql") && !GENERATED.has(name))
       .sort();
 
     const schemaSql = schemaFiles
       .map((name) => `-- ${name}\n${makeReimportable(splitStatements(readFileSync(new URL(name, dir), "utf8")))}`)
       .join("\n\n");
 
+    // migrate-all.sql is migration-only: every 000X file, no seed rows, no admin
+    // credential. This is the artifact for updating an existing production
+    // database — re-inserting default content there would resurrect rows an
+    // operator deliberately deleted (INSERT IGNORE re-creates a missing id).
+    const migrationSql = [
+      "-- CV Amana Perkasa — seluruh migrasi skema, TANPA konten awal.",
+      "-- Dihasilkan oleh `npm run db:seed:sql`. Jangan diedit manual.",
+      "-- Gunakan file ini untuk MEMPERBARUI database produksi yang sudah berjalan:",
+      "-- hanya struktur yang diperbarui, konten produksi tidak tersentuh.",
+      "-- Aman diimpor berulang: CREATE TABLE IF NOT EXISTS dan setiap ALTER dijaga",
+      "-- lewat information_schema. Untuk instalasi BARU gunakan import-all.sql.",
+      "-- File ini TIDAK memuat kredensial admin.",
+      "",
+      "SET NAMES utf8mb4;",
+      "",
+      schemaSql,
+      "",
+    ].join("\n");
+
+    writeFileSync(new URL("../drizzle/migrate-all.sql", dir), migrationSql, "utf8");
+
+    // import-all.sql = migrate-all.sql + starter content, for a fresh install only.
     const combined = [
-      "-- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin.",
+      "-- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin (INSTALASI BARU).",
       "-- Dihasilkan oleh `npm run db:seed:sql`. Jangan diedit manual; edit data/site.json lalu jalankan ulang.",
       "-- Aman diimpor berulang, termasuk pada database yang baru separuh termigrasi: CREATE TABLE",
       "-- memakai IF NOT EXISTS dan setiap ALTER dijaga lewat information_schema.",
@@ -227,6 +252,7 @@ async function main() {
       "-- DATABASE(), jadi tanpa database terpilih penjagaannya tidak akan cocok.",
       "-- File ini TIDAK memuat kredensial. Buat admin pertama dengan `npm run db:seed`",
       "-- sambil menyetel ADMIN_USERNAME dan ADMIN_PASSWORD di environment.",
+      "-- Untuk MEMPERBARUI database produksi yang sudah berjalan, gunakan migrate-all.sql.",
       "",
       "SET NAMES utf8mb4;",
       "",
@@ -240,8 +266,10 @@ async function main() {
 
     const count = statements.filter((s) => s.endsWith(";")).length;
     console.log(`\nWrote ${count} seed statements -> drizzle/seed-data.sql`);
-    console.log("Wrote combined import         -> drizzle/import-all.sql (tanpa kredensial admin)");
-    console.log("Import drizzle/import-all.sql lewat phpMyAdmin, lalu buat admin dengan `npm run db:seed`.");
+    console.log("Wrote migration-only import      -> drizzle/migrate-all.sql (tanpa konten, tanpa kredensial)");
+    console.log("Wrote combined fresh install     -> drizzle/import-all.sql (skema + konten)");
+    console.log("Instalasi baru: import drizzle/import-all.sql. Update produksi: drizzle/migrate-all.sql.");
+    console.log("Buat admin pertama dengan `npm run db:seed`.");
     return;
   }
 

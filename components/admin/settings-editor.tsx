@@ -154,7 +154,7 @@ export default function SettingsEditor({ group, label, fields, values, media }: 
               ) : (
                 <input
                   id={id}
-                  type="text"
+                  type={field.type === "url" ? "url" : "text"}
                   maxLength={field.maxLength}
                   className={inputClass}
                   value={text[field.name] ?? ""}

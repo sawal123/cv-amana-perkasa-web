@@ -110,7 +110,9 @@ const bytes = sizeOf(deploy);
 console.log(
   `\nDone. ${deploy}\nSize: ${(bytes / 1024 / 1024).toFixed(1)} MB\n` +
     `Next: zip the CONTENTS of ./deploy (not the folder itself), upload, extract ` +
-    `into the cPanel app root, then set NODE_ENV, DATABASE_URL and AUTH_SECRET, ` +
-    `import drizzle/import-all.sql via phpMyAdmin, and point "Application startup ` +
-    `file" at server.js.`,
+    `into the cPanel app root, then set NODE_ENV, DATABASE_URL, AUTH_SECRET and ` +
+    `SITE_URL, and point "Application startup file" at server.js. ` +
+    `Database: import drizzle/import-all.sql for a NEW install, or ` +
+    `drizzle/migrate-all.sql to UPDATE a running production database. ` +
+    `See docs/PRODUCTION_DEPLOYMENT.md.`,
 );

@@ -28,7 +28,7 @@ Butuh Node **20.9+** dan MySQL/MariaDB yang bisa diakses.
 
 ```bash
 npm install
-cp .env.example .env      # isi DATABASE_URL, AUTH_SECRET, ADMIN_PASSWORD
+cp .env.example .env      # isi DATABASE_URL, AUTH_SECRET, ADMIN_PASSWORD, SITE_URL
 npm run db:migrate        # buat tabel dari drizzle/*.sql
 npm run db:seed           # isi konten default + buat user admin pertama
 npm run dev               # http://localhost:3000
@@ -47,6 +47,7 @@ bawaan di `data/site.json` (lihat bagian Fallback).
 
 | Variabel | Keterangan |
 |---|---|
+| `SITE_URL` | Origin deployment (`https://amanaperkasa.co.id`). Dasar canonical, `robots.txt`, `sitemap.xml`, dan JSON-LD. Produksi wajib https |
 | `DATABASE_URL` | `mysql://user:pass@127.0.0.1:3306/nama_db`. Di cPanel pakai `127.0.0.1`, bukan `localhost` |
 | `AUTH_SECRET` | Kunci sign session. Minimal 32 karakter |
 | `ADMIN_USERNAME` | Hanya dipakai `db:seed` untuk membuat user pertama (default `admin`) |
@@ -58,14 +59,24 @@ Akses di `/admin`, login dengan `ADMIN_USERNAME` / `ADMIN_PASSWORD` dari seed.
 
 - **Settings** — identitas, hero, tentang (termasuk statistik), teks tiap seksi,
   kontak (telepon, email, WhatsApp, alamat, Instagram), dan **SEO & meta**
-  (judul, description, keywords, OG image, URL kanonis)
-- **Layanan / Project / Tim & Management / Workflow / Legalitas** — CRUD penuh:
-  tambah, ubah, hapus, urut naik-turun, dan sembunyikan tanpa menghapus baris
+  (judul, description, keywords, OG image, URL kanonis — URL kanonis divalidasi
+  sebagai alamat absolut http/https)
+- **Layanan / Project / Tim & Management / Workflow / Legalitas / Keunggulan /
+  Clients & Partners / Testimonials** — CRUD penuh: tambah, ubah, hapus, urut
+  naik-turun, dan sembunyikan tanpa menghapus baris
+- **Permintaan Penawaran** — daftar lead dari form publik; lihat detail, buka
+  tautan WhatsApp ternormalisasi, dan ubah status (`Baru`, `Sudah Dihubungi`,
+  `Penawaran Dikirim`, `Selesai`). Tidak ada fitur hapus — data lead bersifat
+  arsip
 - **Galeri project** — tombol **Galeri** pada setiap baris di daftar Project.
   Tambah beberapa foto dari pustaka media, isi caption opsional, atur urutan
   dengan ↑ ↓, dan hapus. Gambar cover diatur di form Project, bukan di sini
 - **Media** — unggah gambar (JPG/PNG/WEBP, maks 4 MB), dipakai lewat dropdown
-  di form Project, Tim, dan Galeri
+  di form Project, Tim, Galeri, Client, Testimonial, dan Settings
+
+Project juga punya blok **case study** opsional: `Tujuan / Challenge`,
+`Pendekatan`, dan `Hasil / Outcome`. Blok ini tampil di modal detail project dan
+disembunyikan bila ketiganya kosong.
 
 Urutan baris di admin sama persis dengan urutan tampil di situs.
 
@@ -119,6 +130,10 @@ kehilangan seksi galerinya, dan legalitas kosong menyembunyikan seluruh seksi.
 
 ## Deploy ke cPanel
 
+> Panduan rilis lengkap (SSL, backup, health check, rollback, checklist Go/No-Go)
+> ada di [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md). Ringkasan
+> langkah ada di bawah ini.
+
 ### Fase 0 — pastikan host sanggup
 
 Buka **cPanel → Setup Node.js App**, lihat dropdown *Node.js version*:
@@ -147,14 +162,17 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
 3. Buat database di **cPanel → MySQL® Databases**, catat nama lengkapnya
    (mis. `namacpanel_amana_cms`).
 
-4. Import skema + konten: **phpMyAdmin → pilih DB → Import → `drizzle/import-all.sql`**.
-   Satu file itu berisi seluruh migrasi (`0000`, `0001`, …) dan seed, dan aman
-   diimpor berulang.
+4. Import database — pilih sesuai kondisi:
 
-   Bila situsnya **sudah jalan** dan kamu hanya menambah fitur baru, cukup impor
-   migrasi terbaru saja: `drizzle/0001_project_gallery_and_legalities.sql`
-   (membuat `project_images` dan `company_legalities`, serta kolom metadata di
-   `projects`). Jalur lokal: `npm run db:migrate`.
+   - **Instalasi baru (database kosong):** import `drizzle/import-all.sql`
+     (seluruh migrasi + konten awal).
+   - **Database produksi yang sudah berjalan:** import `drizzle/migrate-all.sql`
+     (seluruh migrasi, **tanpa** konten). Jangan pakai `import-all.sql` untuk
+     update rutin — `INSERT IGNORE` bisa menghidupkan kembali baris default yang
+     sengaja dihapus admin. Jalur lokal `npm run db:migrate` kini **migration-only**.
+
+   Kedua file dihasilkan `npm run db:seed:sql` dari sumber yang sama. Rincian
+   lengkap: [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md).
 
 5. **Setup Node.js App → Create Application**:
 
@@ -167,7 +185,8 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
    | Application startup file | `server.js` |
 
 6. Isi **Environment Variables**: `NODE_ENV=production`, `DATABASE_URL`,
-   `AUTH_SECRET`. Lalu **Create → STOP APP → START APP**.
+   `AUTH_SECRET`, `SITE_URL` (origin produksi, mis.
+   `https://amanaperkasa.co.id`). Lalu **Create → STOP APP → START APP**.
 
 7. **Buat admin pertama.** `import-all.sql` sengaja **tidak** memuat kredensial
    apa pun — tidak ada plaintext maupun hash — jadi admin dibuat dari environment:
@@ -226,41 +245,55 @@ karena filesystem serverless bersifat ephemeral.
 | `npm run build` | Build produksi (standalone) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:generate` | Generate SQL migrasi dari `lib/db/schema.ts` |
-| `npm run db:migrate` | Terapkan `drizzle/*.sql` ke `DATABASE_URL` |
-| `npm run db:seed` | Isi konten + buat/update admin dari environment (`ADMIN_PASSWORD`) |
-| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql` + `drizzle/import-all.sql` untuk phpMyAdmin. Keduanya **tanpa kredensial** |
-| `npm run deploy:pack` | Susun artefak upload di `./deploy` |
+| `npm run db:migrate` | Terapkan migrasi bernomor (`000X_*.sql`) ke `DATABASE_URL` — **migration-only** |
+| `npm run db:seed` | Bootstrap: isi konten awal + buat/update admin dari environment (`ADMIN_PASSWORD`). **Bukan** langkah migrasi rutin |
+| `npm run db:seed:sql` | Tulis `drizzle/seed-data.sql`, `drizzle/migrate-all.sql` (migrasi saja), dan `drizzle/import-all.sql` (skema + konten). Tanpa kredensial |
+| `npm run production:preflight` | Cek env produksi (read-only, tidak menampilkan rahasia) |
+| `npm run deploy:pack` | Susun artefak di `./deploy`, lalu otomatis `deploy:verify` |
+| `npm run deploy:verify` | Verifikasi isi artefak `./deploy` |
+| `npm run production:smoke -- <url>` | Smoke test read-only ke URL produksi |
+| `npm run content:check` | Cek placeholder konten sebelum go-live (read-only) |
 
 ## Tes
 
-Tiga rangkaian, semuanya butuh MySQL sungguhan.
+Semuanya butuh MySQL sungguhan.
 
 ```bash
 npm run build && npm run deploy:pack
 (cd deploy && set PORT=3355&& set NODE_ENV=production&& node --env-file=..\.env server.js)
 
-node --env-file=.env scripts/import-all-check.mjs                    # artefak deployment
-npx tsx --env-file=.env scripts/integration-check.ts                 # CRUD, gallery, upload, hashing
+node --env-file=.env scripts/import-all-check.mjs                    # instalasi baru (import-all)
+node --env-file=.env scripts/migrate-all-check.mjs                   # update produksi (migrate-all)
+npx tsx --env-file=.env scripts/integration-check.ts                 # CRUD, gallery, upload, SEO, health
 node --env-file=.env scripts/e2e-check.mjs http://localhost:3355     # HTTP + auth + fallback
+npm run production:smoke -- http://localhost:3355                    # smoke read-only
 ```
 
-- `import-all-check.mjs` — membuat database sungguhan di server lalu membuktikan
-  `drizzle/import-all.sql` berhasil pada import **pertama**, berhasil lagi pada
-  import **kedua** (tanpa duplikasi), memperbaiki database yang baru separuh
-  termigrasi, menghasilkan skema akhir yang benar, dan tidak memuat kredensial
-  admin. Sudah diverifikasi di MySQL 8 dan MariaDB 10.6.
+- `import-all-check.mjs` — membuktikan `drizzle/import-all.sql` berhasil pada
+  import **pertama**, berhasil lagi pada import **kedua** (tanpa duplikasi),
+  memperbaiki database yang baru separuh termigrasi, menghasilkan skema akhir yang
+  benar, dan tidak memuat kredensial admin. Sudah diverifikasi di MySQL 8 dan
+  MariaDB 10.6.
+- `migrate-all-check.mjs` — membuktikan `drizzle/migrate-all.sql` bersifat
+  **migration-only**: instalasi baru menghasilkan skema lengkap **tanpa** konten
+  awal, aman diimpor berulang, memperbaiki database separuh termigrasi, dan
+  **konten produksi tidak tersentuh** — layanan yang diedit, project default yang
+  dihapus, lead quotation, client, dan testimonial tetap utuh setelah update.
 - `integration-check.ts` — kredensial seed, CRUD konten (insert/urut/sembunyikan/hapus,
-  posisi tetap rapat), metadata project, galeri (media yang ada diterima;
-  media tidak ada, path `/projects/`, URL eksternal, dan traversal ditolak tanpa
-  meninggalkan baris), cascade hapus project, legalitas, validasi upload (tolak
-  `.php`, `.exe`, >4 MB, 0 byte, PNG menyamar), dan round-trip utf8mb4.
+  posisi tetap rapat), metadata project, galeri, cascade hapus project, legalitas,
+  validasi upload, round-trip utf8mb4, plus parsing URL SEO, validasi canonical,
+  keamanan JSON-LD (escape `</script>`), dan pemeriksaan health (config/schema/uploads).
 - `e2e-check.mjs` — halaman publik benar-benar dibaca dari MySQL, gambar upload
-  tersaji, guard path traversal, metadata/galeri/legalitas sampai ke halaman,
-  dan `/admin` menolak anonim/token palsu/token kedaluwarsa sambil menerima sesi sah.
+  tersaji, guard path traversal, metadata/galeri/legalitas sampai ke halaman, dan
+  `/admin` menolak anonim/token palsu/token kedaluwarsa sambil menerima sesi sah.
+- `production-smoke.mjs` — read-only ke server yang berjalan: status `/`,
+  `/robots.txt`, `/sitemap.xml`, `/api/health`, `/admin/login`, 404, tag SEO +
+  JSON-LD, isi robots/sitemap, dan security header.
 
-Ketiganya mengubah database lalu mengembalikannya ke semula (`import-all-check.mjs`
-memakai database sementara yang dihapus di akhir, dua lainnya memakai snapshot yang
-diambil sebelum mutasi).
+Tes yang menyentuh database mengembalikannya ke semula (`import-all-check.mjs` dan
+`migrate-all-check.mjs` memakai database sementara yang dihapus di akhir; yang lain
+memakai snapshot yang diambil sebelum mutasi). `production:preflight` dan
+`content:check` sepenuhnya read-only.
 
 ## Catatan keamanan
 
@@ -276,6 +309,24 @@ diambil sebelum mutasi).
   tidak pernah dari request.
 - `/admin` di-`noindex`, dan pesan login sengaja seragam untuk username salah
   maupun password salah.
+- **Security header** global (`next.config.ts`): `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`,
+  `Permissions-Policy: camera=(), microphone=(), geolocation=()`; plus
+  `Strict-Transport-Security` di build produksi. `X-Powered-By` dimatikan.
+- `/admin/*` dan `/api/*` juga mengirim `X-Robots-Tag: noindex, nofollow` — bukan
+  hanya mengandalkan `robots.txt`.
+- JSON-LD (`Organization`, `WebSite`) di-escape sehingga nilai yang dapat diedit
+  admin tidak bisa keluar dari elemen `<script>`.
+- **CSP belum ditambahkan** pada rilis ini (implementasi nonce perlu diuji
+  menyeluruh); dicatat sebagai follow-up.
+
+## SEO teknis
+
+- `/robots.txt` dan `/sitemap.xml` dihasilkan dari `SITE_URL` (tanpa menebak host
+  dari header request). `/admin` dan `/api` tidak diiklankan ke crawler.
+- Canonical: prioritas `seo.canonical` valid → `SITE_URL` valid → tidak dirender.
+  Nilai rusak di database diabaikan dengan aman, tidak pernah membuat homepage 500.
+- `/api/health` — readiness read-only (`200` siap / `503` belum siap).
 
 ## Berkas konten
 
