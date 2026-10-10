@@ -1,4 +1,4 @@
--- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin.
+-- CV Amana Perkasa — skema + konten, siap import ke phpMyAdmin (INSTALASI BARU).
 -- Dihasilkan oleh `npm run db:seed:sql`. Jangan diedit manual; edit data/site.json lalu jalankan ulang.
 -- Aman diimpor berulang, termasuk pada database yang baru separuh termigrasi: CREATE TABLE
 -- memakai IF NOT EXISTS dan setiap ALTER dijaga lewat information_schema.
@@ -6,6 +6,7 @@
 -- DATABASE(), jadi tanpa database terpilih penjagaannya tidak akan cocok.
 -- File ini TIDAK memuat kredensial. Buat admin pertama dengan `npm run db:seed`
 -- sambil menyetel ADMIN_USERNAME dan ADMIN_PASSWORD di environment.
+-- Untuk MEMPERBARUI database produksi yang sudah berjalan, gunakan migrate-all.sql.
 
 SET NAMES utf8mb4;
 

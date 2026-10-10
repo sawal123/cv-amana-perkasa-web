@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { loadSettings } from "@/lib/content";
+import { absoluteUrl, resolveCanonical } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
-
-function absolutize(value: string, base: string) {
-  if (/^https?:\/\//.test(value)) return value;
-  if (base && value.startsWith("/")) return `${base}${value}`;
-  return value;
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const { seo, identity, hero } = await loadSettings();
 
-  const rawCanonical = seo.canonical.trim();
-  const base = /^https?:\/\//.test(rawCanonical) ? rawCanonical.replace(/\/+$/, "") : "";
+  // Priority: valid CMS canonical → valid SITE_URL → omit. A malformed value —
+  // including one that merely starts with `http://` — resolves to null and is
+  // dropped, so it can never throw here and 500 the homepage.
+  const canonical = resolveCanonical(seo.canonical);
   const keywords = seo.keywords.split(",").map((k) => k.trim()).filter(Boolean);
-  const ogImage = seo.ogImage.trim();
+  const ogImage = absoluteUrl(seo.ogImage, canonical);
+  const title = seo.title.trim() || `${identity.company} | ${identity.tagline}`;
+  const description = seo.description.trim() || hero.description;
 
   return {
-    ...(base ? { metadataBase: new URL(base) } : {}),
-    title: seo.title.trim() || `${identity.company} | ${identity.tagline}`,
-    description: seo.description.trim() || hero.description,
+    ...(canonical ? { metadataBase: new URL(canonical) } : {}),
+    title,
+    description,
     ...(keywords.length ? { keywords } : {}),
     applicationName: identity.company,
     authors: [{ name: identity.company }],
@@ -32,17 +31,17 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       siteName: identity.company,
       title: seo.title.trim() || identity.company,
-      description: seo.description.trim() || hero.description,
-      ...(base ? { url: base } : {}),
-      ...(ogImage ? { images: [{ url: absolutize(ogImage, base), alt: identity.company }] } : {}),
+      description,
+      ...(canonical ? { url: canonical } : {}),
+      ...(ogImage ? { images: [{ url: ogImage, alt: identity.company }] } : {}),
     },
     twitter: {
       card: ogImage ? "summary_large_image" : "summary",
       title: seo.title.trim() || identity.company,
-      description: seo.description.trim() || hero.description,
-      ...(ogImage ? { images: [absolutize(ogImage, base)] } : {}),
+      description,
+      ...(ogImage ? { images: [ogImage] } : {}),
     },
-    ...(base ? { alternates: { canonical: base } } : {}),
+    ...(canonical ? { alternates: { canonical } } : {}),
   };
 }
 

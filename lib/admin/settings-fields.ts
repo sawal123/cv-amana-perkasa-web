@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { SAFE_IMAGE_PATH } from "@/lib/admin/fields";
+import { parseSiteOrigin } from "@/lib/site-url";
 import { SETTINGS_GROUPS, type SettingsGroup } from "@/lib/types";
 
 export type SettingFieldDef = {
   name: string;
   label: string;
-  type: "text" | "textarea" | "image" | "stats";
+  type: "text" | "textarea" | "image" | "stats" | "url";
   maxLength?: number;
   help?: string;
 };
@@ -164,7 +165,7 @@ export const SETTING_TABS: SettingTab[] = [
       { name: "description", label: "Meta description", type: "textarea", maxLength: 320, help: "Panjang aman sekitar 150-160 karakter." },
       { name: "keywords", label: "Keywords", type: "text", maxLength: LONG, help: "Pisah dengan koma." },
       { name: "ogImage", label: "Gambar OG", type: "image", maxLength: 500 },
-      { name: "canonical", label: "URL kanonis", type: "text", maxLength: LONG, help: "mis. https://amanaperkasa.co.id — isi untuk mengaktifkan metadataBase dan canonical." },
+      { name: "canonical", label: "URL kanonis", type: "url", maxLength: LONG, help: "Origin saja, tanpa path — mis. https://amanaperkasa.co.id. Kosongkan untuk memakai SITE_URL." },
     ],
   },
 ];
@@ -184,7 +185,14 @@ export const SETTINGS_SCHEMA_BY_GROUP = Object.fromEntries(
         shape[field.name] =
           field.type === "image"
             ? base.refine((v: unknown) => v === "" || SAFE_IMAGE_PATH.test(String(v)))
-            : base;
+            : field.type === "url"
+              // Empty is valid (SITE_URL then applies). Otherwise it must be a
+              // strict origin — an absolute http(s) URL with no path, query, hash
+              // or credentials. The site has one canonical route (`/`), so
+              // `https://example.com/about` is refused rather than accepted and
+              // then silently reduced at render time.
+              ? base.refine((v: unknown) => v === "" || parseSiteOrigin(v) !== null)
+              : base;
       }
     }
     return [tab.group, z.object(shape).strict()];

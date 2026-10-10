@@ -190,7 +190,10 @@ try {
   const brandHtml = await (await fetch(`${origin}/`)).text();
   const logoRenders = brandHtml.split(`src="${logoPath}"`).length - 1;
   check("company logo renders in header and footer", logoRenders >= 2, `renders=${logoRenders}`);
-  check("logo carries the company alt text", brandHtml.includes('alt="CV AMANA PERKASA"'));
+  // Compare against the stored company name rather than a hardcoded one: an
+  // operator may legitimately rename the company in the admin panel.
+  const companyAlt = JSON.parse(identityBefore).company ?? "";
+  check("logo carries the company alt text", companyAlt.length > 0 && brandHtml.includes(`alt="${companyAlt}"`), `alt="${companyAlt}"`);
   check("initials mark disappears once a logo is set", !brandHtml.includes(">AP<"));
   if (firstTeam) {
     check("team photo renders on the public page", brandHtml.includes(`src="${teamPhotoPath}"`));
@@ -391,6 +394,80 @@ try {
   await connection.query("DELETE FROM projects WHERE title LIKE ?", [`${CS}%`]);
   const caseLeft = (await connection.query("SELECT COUNT(*) AS n FROM projects WHERE title LIKE ?", [`${CS}%`]))[0][0].n;
   check("case-study test project cleaned up", caseLeft === 0);
+
+  // ---- malformed stored canonical never 500s the homepage --------------
+  const seoBefore = await snapshot("seo");
+  for (const bad of ["http://", "https://", "javascript:alert(1)", "ftp://example.com", "//evil.example", "not a url", "https://example.com/about", "https://example.com/project/foo"]) {
+    await connection.query("UPDATE settings SET `value` = JSON_SET(`value`, '$.canonical', ?) WHERE `key` = 'seo'", [bad]);
+    const res = await fetch(`${origin}/`);
+    await res.text();
+    check(`canonical rusak ${JSON.stringify(bad)} → homepage tetap 200`, res.status === 200, `status=${res.status}`);
+  }
+  await connection.query("UPDATE settings SET `value` = ? WHERE `key` = 'seo'", [seoBefore]);
+  check("settings seo dipulihkan", (await snapshot("seo")) === seoBefore);
+
+  // ---- production hardening surface (independent of SITE_URL) ----------
+  const home = await fetch(`${origin}/`);
+  const homeHeaders = home.headers;
+  check("X-Content-Type-Options: nosniff", homeHeaders.get("x-content-type-options") === "nosniff");
+  check("Referrer-Policy diset", homeHeaders.get("referrer-policy") === "strict-origin-when-cross-origin");
+  check("X-Frame-Options: DENY", (homeHeaders.get("x-frame-options") ?? "").toUpperCase() === "DENY");
+  check("Permissions-Policy diset", (homeHeaders.get("permissions-policy") ?? "").includes("camera=()"));
+  check("X-Powered-By tidak dibocorkan", homeHeaders.get("x-powered-by") === null);
+
+  const robots = await fetch(`${origin}/robots.txt`);
+  const robotsBody = robots.status === 200 ? await robots.text() : "";
+  check("GET /robots.txt 200", robots.status === 200, `status=${robots.status}`);
+  check("robots.txt User-agent + Allow", /user-agent:\s*\*/i.test(robotsBody) && /allow:\s*\//i.test(robotsBody));
+  check("robots.txt menolak /admin/ dan /api/", /disallow:\s*\/admin\//i.test(robotsBody) && /disallow:\s*\/api\//i.test(robotsBody));
+
+  const sitemap = await fetch(`${origin}/sitemap.xml`);
+  const sitemapBody = sitemap.status === 200 ? await sitemap.text() : "";
+  check("GET /sitemap.xml 200", sitemap.status === 200, `status=${sitemap.status}`);
+  check("sitemap.xml berupa urlset", sitemapBody.includes("<urlset"));
+  check("sitemap.xml tidak mengiklankan /admin", !sitemapBody.includes("/admin"));
+
+  const health = await fetch(`${origin}/api/health`);
+  const healthText = await health.text();
+  let healthBody = null;
+  try {
+    healthBody = JSON.parse(healthText);
+  } catch {
+    healthBody = null;
+  }
+  check("GET /api/health mengembalikan JSON status", healthBody !== null && typeof healthBody.status === "string", `status=${health.status}`);
+  check("health tidak di-cache", (health.headers.get("cache-control") ?? "").includes("no-store"));
+  check("health tidak membocorkan secret", !healthText.includes("AUTH_SECRET") && !healthText.includes("DATABASE_URL"));
+
+  const loginPage = await fetch(`${origin}/admin/login`);
+  check(
+    "/admin/login X-Robots-Tag noindex, nofollow",
+    (loginPage.headers.get("x-robots-tag") ?? "").toLowerCase().includes("noindex"),
+  );
+
+  const unknown = await fetch(`${origin}/definitely-not-found-xyz`);
+  const unknownBody = unknown.status === 200 ? "" : await unknown.text();
+  check("rute tidak dikenal -> 404", unknown.status === 404, `status=${unknown.status}`);
+  check("404 tidak bocorkan DATABASE_URL/AUTH_SECRET", !unknownBody.includes("DATABASE_URL") && !unknownBody.includes("AUTH_SECRET"));
+
+  // JSON-LD is emitted only when an absolute origin is configured.
+  const jsonLd = [...(await home.text()).matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  if (jsonLd.length > 0) {
+    let types = [];
+    let valid = true;
+    for (const block of jsonLd) {
+      try {
+        const parsed = JSON.parse(block);
+        types = types.concat((Array.isArray(parsed) ? parsed : [parsed]).map((item) => item["@type"]));
+      } catch {
+        valid = false;
+      }
+    }
+    check("JSON-LD valid", valid);
+    check("JSON-LD memuat Organization & WebSite", types.includes("Organization") && types.includes("WebSite"), types.join(","));
+  } else {
+    console.log("  SKIP  JSON-LD (SITE_URL/canonical belum diset di server ini)");
+  }
 } finally {
   await connection.end();
 }
