@@ -1,5 +1,3 @@
-import type { NextConfig } from "next";
-
 // HSTS is only meaningful over HTTPS (browsers ignore it on plain HTTP), so it is
 // added to the production build and left out of `next dev`. No includeSubDomains:
 // it is only safe once every subdomain is guaranteed to serve HTTPS.
@@ -15,7 +13,7 @@ const securityHeaders = [
 
 const noindex = { key: "X-Robots-Tag", value: "noindex, nofollow" };
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   output: "standalone",
   // Removes `X-Powered-By: Next.js`, which advertises the stack for no benefit.
   poweredByHeader: false,
