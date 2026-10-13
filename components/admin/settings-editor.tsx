@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { saveSettingsAction } from "@/app/admin/actions";
 import type { SettingFieldDef } from "@/lib/admin/settings-fields";
+import MediaPicker, { type MediaOption } from "./media-picker";
 import { Banner, Card, Field, btnDangerSm, btnPrimary, btnSecondarySm, inputClass } from "./ui";
 
 type StatValue = { value: string; label: string };
@@ -14,7 +14,7 @@ type Props = {
   label: string;
   fields: SettingFieldDef[];
   values: Record<string, unknown>;
-  media: Array<{ path: string; alt: string }>;
+  media: MediaOption[];
 };
 
 function statsFrom(values: Record<string, unknown>): StatValue[] {
@@ -136,12 +136,23 @@ export default function SettingsEditor({ group, label, fields, values, media }: 
               );
             }
 
-            const wide = field.type === "textarea" || field.type === "image";
+            const isImage = field.type === "image";
+            const wide = field.type === "textarea" || isImage;
+            const labelled = field.type === "text" || field.type === "textarea" || field.type === "url";
 
             return (
               <div key={field.name} className={wide ? "lg:col-span-2" : undefined}>
-                <Field label={field.label} help={field.help} error={errors?.[field.name]} htmlFor={id}>
-                  {field.type === "textarea" ? (
+                <Field label={field.label} help={field.help} error={errors?.[field.name]} htmlFor={labelled ? id : undefined}>
+                  {isImage ? (
+                    <MediaPicker
+                      value={text[field.name] ?? ""}
+                      onChange={(next) => setText((current) => ({ ...current, [field.name]: next }))}
+                      media={media}
+                      allowClear
+                      disabled={busy}
+                      emptyHint="Pilih dari pustaka media. Untuk mengunggah gambar baru, buka menu Media."
+                    />
+                  ) : field.type === "textarea" ? (
                     <textarea
                       id={id}
                       rows={4}
@@ -160,34 +171,6 @@ export default function SettingsEditor({ group, label, fields, values, media }: 
                       onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
                     />
                   )}
-
-                  {field.type === "image" ? (
-                    <div className="mt-2 space-y-2">
-                      {text[field.name] ? (
-                        <div className="relative h-24 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                          <Image src={text[field.name]} alt="" className="object-contain" fill sizes="160px" />
-                        </div>
-                      ) : null}
-                      {media.length ? (
-                        <select
-                          className={inputClass}
-                          value=""
-                          onChange={(e) => e.target.value && setText((current) => ({ ...current, [field.name]: e.target.value }))}
-                        >
-                          <option value="">Pilih dari pustaka gambar…</option>
-                          {media.map((item) => (
-                            <option key={item.path} value={item.path}>
-                              {item.alt ? `${item.alt} — ${item.path}` : item.path}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="text-xs text-slate-400">
-                          Belum ada gambar di pustaka. Unggah lewat menu Media, atau tulis path manual di atas.
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
                 </Field>
               </div>
             );

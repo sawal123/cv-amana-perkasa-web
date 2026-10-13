@@ -12,12 +12,14 @@ const btnBase =
 const btnPrimaryTone = "bg-blue-600 text-white shadow-sm hover:bg-blue-500";
 const btnSecondaryTone = "border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900";
 const btnDangerTone = "border border-red-200 bg-white text-red-600 hover:bg-red-50";
+const btnDangerSolidTone = "bg-red-600 text-white shadow-sm hover:bg-red-500";
 
 /** Sizing lives on each variant, so a small variant never fights a base padding. */
 export const btn = btnBase;
 export const btnPrimary = `${btnBase} ${btnPrimaryTone} px-3.5 py-2 text-sm`;
 export const btnSecondary = `${btnBase} ${btnSecondaryTone} px-3.5 py-2 text-sm`;
 export const btnDanger = `${btnBase} ${btnDangerTone} px-3.5 py-2 text-sm`;
+export const btnDangerSolid = `${btnBase} ${btnDangerSolidTone} px-3.5 py-2 text-sm`;
 export const btnPrimarySm = `${btnBase} ${btnPrimaryTone} px-2.5 py-1.5 text-xs`;
 export const btnSecondarySm = `${btnBase} ${btnSecondaryTone} px-2.5 py-1.5 text-xs`;
 export const btnDangerSm = `${btnBase} ${btnDangerTone} px-2.5 py-1.5 text-xs`;

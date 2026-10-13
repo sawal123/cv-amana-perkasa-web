@@ -1,9 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { deleteMediaAction, uploadMediaAction } from "@/app/admin/actions";
+import AdminImagePreview from "./admin-image-preview";
+import { useConfirmDialog } from "./confirm-dialog";
 import { Banner, Card, EmptyState, btnDangerSm, btnPrimary, inputClass } from "./ui";
 
 type Props = {
@@ -24,9 +25,34 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [alt, setAlt] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [picked, setPicked] = useState<{ name: string; size: number } | null>(null);
   const [message, setMessage] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog } = useConfirmDialog();
+
+  // Release the object URL whenever the picked file changes or the page unmounts.
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  function onPick(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setMessage(undefined);
+    setSuccess(undefined);
+    setPreview(file ? URL.createObjectURL(file) : null);
+    setPicked(file ? { name: file.name, size: file.size } : null);
+  }
+
+  function resetPicker() {
+    setPreview(null);
+    setPicked(null);
+    setAlt("");
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,8 +77,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
       const result = await uploadMediaAction(formData);
       if (result.ok) {
         setSuccess(result.message ?? "Gambar terunggah.");
-        setAlt("");
-        if (input) input.value = "";
+        resetPicker();
         router.refresh();
       } else {
         setMessage(result.message ?? "Gagal mengunggah.");
@@ -62,8 +87,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
     }
   }
 
-  async function remove(id: number, name: string) {
-    if (!window.confirm(`Hapus ${name}?`)) return;
+  async function remove(id: number) {
     setBusy(true);
     setMessage(undefined);
     setSuccess(undefined);
@@ -86,27 +110,42 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
         {success ? <Banner tone="success">{success}</Banner> : null}
 
         <form onSubmit={submit} className="space-y-4">
-          <label
-            htmlFor="media-file"
-            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center transition hover:border-blue-300 hover:bg-blue-50/40"
-          >
-            <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-slate-400 ring-1 ring-slate-200">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
-                <path d="M12 16V5" />
-                <path d="m8 9 4-4 4 4" />
-                <path d="M5 19h14" />
-              </svg>
-            </span>
-            <span className="mt-3 text-sm font-semibold text-slate-700">Pilih berkas gambar</span>
-            <span className="mt-1 text-xs text-slate-400">atau seret berkas ke area ini</span>
-            <input
-              id="media-file"
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-            />
-          </label>
+          <div className={preview ? "grid gap-4 sm:grid-cols-[200px_1fr] sm:items-start" : undefined}>
+            <label
+              htmlFor="media-file"
+              className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center transition hover:border-blue-300 hover:bg-blue-50/40"
+            >
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-slate-400 ring-1 ring-slate-200">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                  <path d="M12 16V5" />
+                  <path d="m8 9 4-4 4 4" />
+                  <path d="M5 19h14" />
+                </svg>
+              </span>
+              <span className="mt-3 text-sm font-semibold text-slate-700">Pilih berkas gambar</span>
+              <span className="mt-1 text-xs text-slate-400">atau seret berkas ke area ini</span>
+              <input
+                id="media-file"
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={onPick}
+                className="sr-only"
+              />
+            </label>
+
+            {preview && picked ? (
+              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                  <AdminImagePreview src={preview} fit="contain" className="h-full w-full" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-slate-800">{picked.name}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">{formatSize(picked.size)}</div>
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           <input
             type="text"
@@ -117,9 +156,16 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
             onChange={(e) => setAlt(e.target.value)}
           />
 
-          <button type="submit" disabled={busy} className={btnPrimary}>
-            {busy ? "Mengunggah…" : "Unggah"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} className={btnPrimary}>
+              {busy ? "Mengunggah…" : "Unggah"}
+            </button>
+            {preview ? (
+              <button type="button" disabled={busy} onClick={resetPicker} className={btnDangerSm}>
+                Batalkan pilihan
+              </button>
+            ) : null}
+          </div>
         </form>
       </Card>
 
@@ -135,7 +181,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
             {items.map((item) => (
               <figure key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="relative aspect-[4/3] bg-slate-100">
-                  <Image src={item.path} alt={item.alt || item.filename} className="object-cover" fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" />
+                  <AdminImagePreview src={item.path} alt={item.alt || item.filename} className="h-full w-full" />
                 </div>
                 <figcaption className="space-y-2 p-4">
                   <div className="truncate text-sm font-semibold text-slate-800" title={item.filename}>
@@ -146,7 +192,19 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
                   </div>
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{formatSize(item.size)}</span>
-                    <button type="button" disabled={busy} onClick={() => remove(item.id, item.filename)} className={btnDangerSm}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        confirm({
+                          title: "Hapus gambar?",
+                          description: "Gambar hanya dapat dihapus bila tidak sedang digunakan.",
+                          confirmLabel: "Hapus",
+                          onConfirm: () => remove(item.id),
+                        })
+                      }
+                      className={btnDangerSm}
+                    >
                       Hapus
                     </button>
                   </div>
@@ -160,6 +218,8 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
           Settings (hero, OG image) harus diganti di sana lebih dulu.
         </p>
       </Card>
+
+      {dialog}
     </div>
   );
 }

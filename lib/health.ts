@@ -1,9 +1,9 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { join } from "node:path";
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { parseSiteOrigin } from "@/lib/site-url";
+import { isUploadStorageConfigured, resolveUploadStorageDir } from "@/lib/upload-storage";
 
 /**
  * Readiness probe logic, kept out of the route handler so each piece can be
@@ -49,18 +49,25 @@ export function isProductionSiteOrigin(value: unknown): boolean {
 /** Config-only checks with no I/O, so they are unit-testable in isolation. */
 export function checkConfig(env: Record<string, string | undefined> = process.env): HealthCheck[] {
   const secret = env.AUTH_SECRET ?? "";
+  const uploadStorage = (env.UPLOAD_STORAGE_DIR ?? "").trim();
   return [
     { name: "auth_secret", ok: secret.length >= 32 },
     { name: "site_url", ok: isProductionSiteOrigin(env.SITE_URL) },
+    // Unset means the local/deployment fallback, which is valid. A value that is
+    // set but not an absolute path is an operator mistake: fail closed rather
+    // than silently writing media into the disposable deployment directory.
+    { name: "upload_storage", ok: uploadStorage === "" || isUploadStorageConfigured(env) },
   ];
 }
 
 /**
  * An access check only — health must never create a real upload. Reports false
- * for both a missing directory and an unwritable one.
+ * for both a missing directory and an unwritable one. The directory is the same
+ * one uploads are actually written to, so health cannot pass while writes go
+ * somewhere else.
  */
 export async function checkUploadsWritable(
-  dir: string = join(process.cwd(), "public", "uploads"),
+  dir: string = resolveUploadStorageDir(),
 ): Promise<boolean> {
   try {
     await access(dir, constants.W_OK);

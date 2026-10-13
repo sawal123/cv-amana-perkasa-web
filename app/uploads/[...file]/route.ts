@@ -1,18 +1,19 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { sep } from "node:path";
 import { NextResponse } from "next/server";
+import { resolveUploadStorageDir, uploadPath } from "@/lib/upload-storage";
 
 /**
- * Serves freshly uploaded images.
+ * Serves runtime-uploaded images from the configured storage directory.
  *
- * Next builds its public-file index once at boot, so a file written into
- * public/uploads by the admin is NOT served until the process restarts — on
- * cPanel that restart costs a 10-20s 503, which makes the CMS unusable. This
- * handler reads from disk per request instead, so an upload is live immediately.
+ * Next builds its public-file index once at boot, so a file written after boot
+ * is NOT served by the static middleware until the process restarts — and when
+ * `UPLOAD_STORAGE_DIR` points outside `public/` it never would. This handler
+ * reads the bytes per request instead, so an upload is live immediately and the
+ * public URL stays /uploads/<uuid>.<ext> regardless of where the file lives.
  *
- * Files that existed at boot are still served by the static middleware first,
- * so this only carries the requests that actually need it.
+ * The file is read into memory (uploads are capped at 4 MB) and returned as a
+ * real Uint8Array body — not a Node stream cast to a Web ReadableStream.
  */
 
 export const dynamic = "force-dynamic";
@@ -44,25 +45,25 @@ export async function GET(
   if (file.length !== 1 || !SAFE_NAME.test(file[0])) return notFound();
 
   const name = file[0];
-  const dir = resolve(process.cwd(), "public", "uploads");
-  const target = join(dir, name);
+  const dir = resolveUploadStorageDir();
+  const target = uploadPath(name);
   if (!target.startsWith(dir + sep)) return notFound();
 
-  let size: number;
+  let body: Buffer;
   try {
-    const info = await stat(target);
-    if (!info.isFile()) return notFound();
-    size = info.size;
+    body = await readFile(target);
   } catch {
+    // Missing file, a directory, or an unreadable path all resolve to the same
+    // 404 so nothing about the filesystem leaks.
     return notFound();
   }
 
   const extension = name.slice(name.lastIndexOf(".")).toLowerCase();
 
-  return new NextResponse(createReadStream(target) as unknown as ReadableStream, {
+  return new NextResponse(new Uint8Array(body), {
     headers: {
       "Content-Type": TYPES[extension] ?? "application/octet-stream",
-      "Content-Length": String(size),
+      "Content-Length": String(body.byteLength),
       // Immutable: the name is a UUID, so content for a given URL never changes.
       "Cache-Control": "public, max-age=31536000, immutable",
     },

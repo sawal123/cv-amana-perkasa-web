@@ -224,10 +224,12 @@ Next 16 menyatakan `"engines": { "node": ">=20.9.0" }`.
   Konsekuensinya tiap kunjungan menyentuh MySQL — untuk situs company profile ini
   tidak masalah, dan yang pertama diubah bila traffic naik adalah menambah cache di
   `lib/content.ts`.
-- **Upload tidak hilang saat redeploy.** `deploy:pack` melestarikan
-  `deploy/public/uploads`. Di server, jangan hapus folder `public/uploads` saat
-  menimpa hasil build baru — MySQL tetap menunjuk berkasnya.
-- **Pastikan `public/uploads` dan `.next/cache` writable** oleh user cPanel.
+- **Upload tidak hilang saat redeploy.** Set `UPLOAD_STORAGE_DIR` ke path absolut
+  yang persisten di luar direktori rilis (wajib pada managed Node yang mengganti
+  direktori aplikasi tiap deploy). Bila kosong, upload disimpan di
+  `public/uploads` dan `deploy:pack` melestarikan `deploy/public/uploads` — jangan
+  hapus folder itu saat menimpa build baru. URL publik tetap `/uploads/<uuid>.<ext>`.
+- **Pastikan direktori upload (dan `.next/cache`) writable** oleh user cPanel.
 - **Jangan jalankan `next dev` dan `next build` bersamaan** pada satu direktori;
   keduanya berbagi `.next/cache`.
 - WebSocket dan long-polling umumnya tidak jalan di Passenger. Tidak dipakai di sini.

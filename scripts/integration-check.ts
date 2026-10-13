@@ -8,7 +8,8 @@
  * Needs DATABASE_URL. Creates its own rows and files and removes them again.
  */
 import { existsSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { mkdtemp, rm, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { defaultContent } from "@/data/site";
@@ -25,6 +26,7 @@ import {
 import * as store from "@/lib/admin/store";
 import { loadContent } from "@/lib/content";
 import { MAX_UPLOAD_BYTES, listMedia, mediaUsage, removeMedia, saveUpload, uploadDir } from "@/lib/media";
+import { isUploadStorageConfigured, resolveUploadStorageDir, uploadPath } from "@/lib/upload-storage";
 import { TABLES, type Payload } from "@/lib/admin/fields";
 import { SETTINGS_SCHEMA_BY_GROUP } from "@/lib/admin/settings-fields";
 import {
@@ -932,6 +934,64 @@ async function main() {
   check("serializeJsonLd meng-escape < menjadi \\u003c", serializeJsonLd({ x: "<" }).includes("\\u003c"));
   check("escapeJsonForScript meng-escape U+2028", escapeJsonForScript("\u2028") === "\\u2028");
   check("escapeJsonForScript meng-escape &", escapeJsonForScript("a&b") === "a\\u0026b");
+
+  // --------------------------------------------------- upload storage directory
+  // Uploads must resolve through lib/upload-storage so a configured persistent
+  // directory (managed hosting) is honoured consistently by save, delete, the
+  // /uploads route and the health check — never silently by public/uploads.
+  const originalUploadDir = process.env.UPLOAD_STORAGE_DIR;
+  try {
+    delete process.env.UPLOAD_STORAGE_DIR;
+    check(
+      "resolveUploadStorageDir default = public/uploads",
+      resolveUploadStorageDir() === join(process.cwd(), "public", "uploads"),
+    );
+    check("isUploadStorageConfigured false tanpa env", !isUploadStorageConfigured());
+
+    process.env.UPLOAD_STORAGE_DIR = "relative/uploads";
+    check("UPLOAD_STORAGE_DIR relatif tidak dianggap terkonfigurasi", !isUploadStorageConfigured());
+    check(
+      "UPLOAD_STORAGE_DIR relatif jatuh ke fallback lokal",
+      resolveUploadStorageDir() === join(process.cwd(), "public", "uploads"),
+    );
+
+    const tempDir = await mkdtemp(join(tmpdir(), "amana-uploads-"));
+    process.env.UPLOAD_STORAGE_DIR = tempDir;
+    check("UPLOAD_STORAGE_DIR absolut terpakai", resolveUploadStorageDir() === tempDir && isUploadStorageConfigured());
+    check("uploadPath memakai direktori terkonfigurasi", uploadPath("x.png") === join(tempDir, "x.png"));
+    check("uploadDir() mengikuti UPLOAD_STORAGE_DIR", uploadDir() === tempDir);
+
+    // A real write lands in the configured directory, not in public/uploads.
+    const stored = await saveUpload(
+      fakeFile("dir.png", Buffer.concat([PNG_HEADER, Buffer.alloc(40)]), "image/png"),
+      "Direktori uji",
+    );
+    check("saveUpload ke direktori terkonfigurasi diterima", stored.ok, stored.ok ? stored.item.path : stored.error);
+    if (stored.ok) {
+      const onDisk = join(tempDir, stored.item.path.replace("/uploads/", ""));
+      const inRepo = join(process.cwd(), "public", "uploads", stored.item.path.replace("/uploads/", ""));
+      check("berkas ditulis ke direktori terkonfigurasi", existsSync(onDisk));
+      check("berkas TIDAK ditulis ke public/uploads", !existsSync(inRepo));
+
+      const removed = await removeMedia(stored.item.id);
+      check("removeMedia menghapus dari direktori terkonfigurasi", removed.ok && !existsSync(onDisk), removed.ok ? "" : removed.error);
+    }
+
+    check(
+      "health: upload_storage ok saat absolut",
+      checkConfig({ AUTH_SECRET: "x".repeat(32), SITE_URL: "https://example.com", UPLOAD_STORAGE_DIR: tempDir }).find((c) => c.name === "upload_storage")?.ok === true,
+    );
+    check(
+      "health: upload_storage gagal saat relatif",
+      checkConfig({ AUTH_SECRET: "x".repeat(32), SITE_URL: "https://example.com", UPLOAD_STORAGE_DIR: "relative" }).find((c) => c.name === "upload_storage")?.ok === false,
+    );
+    check("health: uploads writable memakai UPLOAD_STORAGE_DIR", await checkUploadsWritable());
+
+    await rm(tempDir, { recursive: true, force: true });
+  } finally {
+    if (originalUploadDir === undefined) delete process.env.UPLOAD_STORAGE_DIR;
+    else process.env.UPLOAD_STORAGE_DIR = originalUploadDir;
+  }
 
   // ------------------------------------------------------------- health checks
   const okEnv = { AUTH_SECRET: "x".repeat(32), SITE_URL: "https://example.com" };

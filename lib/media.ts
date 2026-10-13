@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { resolve, sep } from "node:path";
+import { resolveUploadStorageDir, uploadPath } from "@/lib/upload-storage";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
@@ -46,16 +47,13 @@ const SIGNATURES: Array<{ mime: string; ext: string; test: (b: Buffer) => boolea
 ];
 
 /**
- * Statically scoped on purpose. Reading the directory from an env var made
- * Turbopack treat this as unbounded filesystem access and trace the entire
- * project into the standalone bundle — 75 MB instead of 50, plus three build
- * warnings. Moving uploads is a one-line change here, which is a fair trade on
- * hosting with inode quotas.
+ * The directory uploads live in, resolved per call from lib/upload-storage so a
+ * configured `UPLOAD_STORAGE_DIR` (a persistent path on managed hosting) takes
+ * effect without pinning a directory at import time. The public URL contract is
+ * unchanged: every stored path stays `/uploads/<uuid>.<ext>`.
  */
-const UPLOADS = join(process.cwd(), "public", "uploads");
-
 export function uploadDir(): string {
-  return UPLOADS;
+  return resolveUploadStorageDir();
 }
 
 export type MediaItem = {
@@ -97,10 +95,10 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
   }
 
   const id = randomUUID();
-  const target = join(uploadDir(), `${id}.${signature.ext}`);
+  const dir = uploadDir();
+  const target = uploadPath(`${id}.${signature.ext}`);
   const publicPath = `/uploads/${id}.${signature.ext}`;
 
-  const dir = uploadDir();
   if (!target.startsWith(dir + sep)) {
     return { ok: false, error: "Tujuan upload tidak valid." };
   }
