@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,7 +9,10 @@ import {
   moveGalleryImageAction,
   updateGalleryCaptionAction,
 } from "@/app/admin/actions";
+import AdminImagePreview from "./admin-image-preview";
+import { useConfirmDialog } from "./confirm-dialog";
 import { NavIcon } from "./icons";
+import MediaPicker, { type MediaOption } from "./media-picker";
 import { Banner, Card, EmptyState, Field, PageHeader, btnDangerSm, btnIconSm, btnPrimary, btnSecondarySm, inputClass } from "./ui";
 
 type GalleryItem = { id: number; image: string; caption: string };
@@ -19,7 +21,7 @@ type Props = {
   projectId: number;
   projectTitle: string;
   images: GalleryItem[];
-  media: Array<{ path: string; alt: string }>;
+  media: MediaOption[];
 };
 
 export default function GalleryManager({ projectId, projectTitle, images, media }: Props) {
@@ -30,6 +32,7 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
   const [message, setMessage] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog } = useConfirmDialog();
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>, successText?: string) {
     setBusy(true);
@@ -85,25 +88,17 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
       <Card title="Tambah gambar" description={`${images.length} gambar di galeri project ini.`}>
         {media.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Pustaka media masih kosong. Unggah gambar di menu <strong>Media</strong> terlebih dahulu.
+            Pustaka media masih kosong. Unggah gambar di menu{" "}
+            <Link href="/admin/media" className="font-semibold text-blue-600 hover:text-blue-700">
+              Media
+            </Link>{" "}
+            terlebih dahulu.
           </p>
         ) : (
           <form onSubmit={add} className="grid gap-4 lg:grid-cols-2 lg:items-start">
             <div className="space-y-4">
-              <Field label="Gambar" htmlFor="gallery-image">
-                <select
-                  id="gallery-image"
-                  className={inputClass}
-                  value={selected}
-                  onChange={(e) => setSelected(e.target.value)}
-                >
-                  <option value="">Pilih dari pustaka gambar…</option>
-                  {media.map((item) => (
-                    <option key={item.path} value={item.path}>
-                      {item.alt ? `${item.alt} — ${item.path}` : item.path}
-                    </option>
-                  ))}
-                </select>
+              <Field label="Gambar">
+                <MediaPicker value={selected} onChange={setSelected} media={media} disabled={busy} />
               </Field>
 
               <Field label="Caption" htmlFor="gallery-caption" help="Opsional, tampil di bawah foto saat dibuka.">
@@ -124,7 +119,7 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
 
             {selected ? (
               <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                <Image src={selected} alt="" className="object-cover" fill sizes="(max-width: 1024px) 100vw, 420px" />
+                <AdminImagePreview src={selected} className="h-full w-full" />
               </div>
             ) : null}
           </form>
@@ -143,7 +138,7 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
             {images.map((item, index) => (
               <li key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="relative aspect-[4/3] bg-slate-100">
-                  <Image src={item.image} alt="" className="object-cover" fill sizes="(max-width: 640px) 100vw, 33vw" />
+                  <AdminImagePreview src={item.image} className="h-full w-full" />
                   <span className="absolute left-2 top-2 grid h-6 min-w-6 place-items-center rounded-full bg-[#041429]/80 px-1.5 text-[11px] font-bold text-white">
                     {index + 1}
                   </span>
@@ -190,10 +185,14 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => {
-                        if (!window.confirm("Hapus gambar ini dari galeri? Berkasnya tetap ada di pustaka media.")) return;
-                        run(() => deleteGalleryImageAction(item.id));
-                      }}
+                      onClick={() =>
+                        confirm({
+                          title: "Hapus gambar dari galeri?",
+                          description: "Berkas tetap tersedia di pustaka media.",
+                          confirmLabel: "Hapus",
+                          onConfirm: () => run(() => deleteGalleryImageAction(item.id)),
+                        })
+                      }
                       className={`${btnDangerSm} ml-auto`}
                     >
                       Hapus
@@ -205,6 +204,8 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
           </ul>
         )}
       </Card>
+
+      {dialog}
     </div>
   );
 }

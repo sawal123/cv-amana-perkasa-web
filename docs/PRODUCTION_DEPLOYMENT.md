@@ -208,6 +208,7 @@ NODE_ENV=production
 DATABASE_URL=mysql://USER:PASS@127.0.0.1:3306/namacpanel_amana_cms
 AUTH_SECRET=<openssl rand -base64 48>
 SITE_URL=https://domain-produksi.com
+UPLOAD_STORAGE_DIR=/absolute/persistent/path/to/uploads
 ```
 
 `SITE_URL` adalah **origin deployment** (bukan field konten): URL absolut
@@ -216,6 +217,17 @@ hash, atau kredensial. Nilai seperti `https://example.com/amana` **ditolak**
 (bukan dipotong diam-diam): preflight `FAIL` dan `/api/health` `degraded`,
 karena robots/sitemap/canonical/JSON-LD harus memakai origin yang sama persis
 dengan yang ditulis operator.
+
+`UPLOAD_STORAGE_DIR` adalah direktori **fisik** tempat gambar hasil upload admin
+disimpan. Deployment managed Node mengganti direktori aplikasi pada tiap
+redeploy, jadi media tidak boleh hanya mengandalkan `<app>/public/uploads`.
+Set ke path **absolut, persisten, dan writable** milik akun hosting, di luar
+direktori rilis. Bila dikosongkan, upload jatuh ke `<cwd>/public/uploads`
+(perilaku lokal/legacy). Nilai yang diisi tetapi **bukan path absolut ditolak**:
+`/api/health` melaporkan `degraded`.
+
+URL publik tidak berubah: data tetap menyimpan `/uploads/<uuid>.<ext>`, dan
+`app/uploads/[...file]/route.ts` membaca berkas dari direktori ini.
 
 ## 13. Restart
 
@@ -229,7 +241,10 @@ GET /api/health
 ```
 
 - `200 {"status":"ok"}` bila: `AUTH_SECRET` >= 32, `SITE_URL` valid (https),
-  database terjangkau, skema lengkap, `public/uploads` writable.
+  `UPLOAD_STORAGE_DIR` kosong atau path absolut, database terjangkau, skema
+  lengkap, dan direktori upload (`UPLOAD_STORAGE_DIR` atau `public/uploads`)
+  writable — direktori yang diperiksa adalah direktori yang benar-benar dipakai
+  untuk menulis upload.
 - `503` bila belum siap (`status: "degraded"`).
 
 Endpoint ini read-only, tanpa auth, `Cache-Control: no-store`, `X-Robots-Tag:

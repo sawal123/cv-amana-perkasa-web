@@ -9,8 +9,12 @@
  * by MySQL, and that admin auth accepts real sessions and refuses everything
  * else. Mutates the database, then restores it from a snapshot taken first.
  */
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { SignJWT } from "jose";
 import mysql from "mysql2/promise";
+
+const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const origin = process.argv[2] ?? "http://localhost:3355";
 const url = process.env.DATABASE_URL;
@@ -98,6 +102,34 @@ try {
 
   const traversal = await fetch(origin + "/uploads/package.json");
   check("non-UUID upload path is refused", traversal.status === 404, `status=${traversal.status}`);
+
+  // ---- a written upload is served immediately, from the storage directory ----
+  // A file created after boot (and, when UPLOAD_STORAGE_DIR is set, OUTSIDE
+  // public/) must still be returned by /uploads with the right type and a
+  // non-empty body. This is the end-to-end proof for the storage helper.
+  const UP = "E2E-UPLOAD";
+  const uploadUuid = "12345678-1234-4123-8123-123456789abc";
+  const uploadRel = `/uploads/${uploadUuid}.png`;
+  const uploadBytes = Buffer.concat([PNG_HEADER, Buffer.alloc(96, 7)]);
+  const uploadsDir = process.env.UPLOAD_STORAGE_DIR || join(process.cwd(), "public", "uploads");
+
+  await mkdir(uploadsDir, { recursive: true });
+  await unlink(join(uploadsDir, `${uploadUuid}.png`)).catch(() => undefined);
+  await writeFile(join(uploadsDir, `${uploadUuid}.png`), uploadBytes);
+  await connection.query("INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png')", [`${UP}.png`, uploadRel]);
+
+  const servedUpload = await fetch(origin + uploadRel);
+  const servedBytes = servedUpload.status === 200 ? Buffer.from(await servedUpload.arrayBuffer()) : Buffer.alloc(0);
+  check("GET /uploads/<uuid>.png -> 200", servedUpload.status === 200, `status=${servedUpload.status}`);
+  check("upload Content-Type image/png", servedUpload.headers.get("content-type") === "image/png");
+  check("upload body non-empty and intact", servedBytes.length === uploadBytes.length, `bytes=${servedBytes.length}`);
+
+  await connection.query("DELETE FROM media WHERE filename = ?", [`${UP}.png`]);
+  await unlink(join(uploadsDir, `${uploadUuid}.png`)).catch(() => undefined);
+  check(
+    "media uji upload dibersihkan",
+    (await connection.query("SELECT COUNT(*) AS n FROM media WHERE filename = ?", [`${UP}.png`]))[0][0].n === 0,
+  );
 
   // ---- project gallery, metadata and legalities reach the public page ----
   // site-shell is a client component, so its content props are serialised into the

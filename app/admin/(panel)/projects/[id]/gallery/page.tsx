@@ -25,7 +25,7 @@ export default async function ProjectGalleryPage({
       projectId={projectId}
       projectTitle={project.values.title}
       images={images.map((row) => ({ id: row.id, image: row.image, caption: row.caption }))}
-      media={media.map((item) => ({ path: item.path, alt: item.alt }))}
+      media={media.map((item) => ({ path: item.path, alt: item.alt, filename: item.filename }))}
     />
   );
 }
