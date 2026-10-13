@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { logoutAction } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/auth";
 import { TABLES, type ContentTable } from "@/lib/admin/fields";
-import Nav, { type NavItem } from "@/components/admin/nav";
+import AdminShell from "@/components/admin/admin-shell";
+import { NAV_GROUP_ORDER, tablePresentation, type NavGroup, type NavItem } from "@/components/admin/nav";
 
 export const dynamic = "force-dynamic";
 
@@ -17,52 +16,49 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/**
+ * Builds the sidebar from the content registry, so a table added to TABLES shows
+ * up automatically. Only the group/icon presentation comes from
+ * components/admin/nav — the routes and labels stay the registry's.
+ */
+function buildNavGroups(): NavGroup[] {
+  const buckets = new Map<string, NavItem[]>();
+  const add = (group: string, item: NavItem) => {
+    const list = buckets.get(group) ?? [];
+    list.push(item);
+    buckets.set(group, list);
+  };
+
+  add("Main", { href: "/admin", label: "Ringkasan", icon: "dashboard" });
+  add("Website", { href: "/admin/settings", label: "Settings", icon: "settings" });
+
+  for (const key of Object.keys(TABLES) as ContentTable[]) {
+    const table = TABLES[key];
+    const { group, icon } = tablePresentation(key);
+    add(group, {
+      href: table.route,
+      label: table.label,
+      icon,
+      // The project gallery lives at /admin/projects/[id]/gallery, so the Project
+      // item should stay highlighted there too.
+      match: key === "projects" ? [table.route, "/admin/projects"] : [table.route],
+    });
+  }
+
+  add("Business", { href: "/admin/quotation-requests", label: "Permintaan Penawaran", icon: "inbox" });
+  add("Assets", { href: "/admin/media", label: "Media", icon: "image" });
+
+  const ordered = NAV_GROUP_ORDER.filter((label) => buckets.has(label));
+  const extra = [...buckets.keys()].filter((label) => !NAV_GROUP_ORDER.includes(label));
+  return [...ordered, ...extra].map((label) => ({ label, items: buckets.get(label) ?? [] }));
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireAdmin();
 
-  // Built from the registry, so a new content table appears here automatically.
-  const items: NavItem[] = [
-    { href: "/admin", label: "Ringkasan" },
-    { href: "/admin/settings", label: "Settings" },
-    ...(Object.keys(TABLES) as ContentTable[]).map((key) => ({
-      href: TABLES[key].route,
-      label: TABLES[key].label,
-    })),
-    // Not a content table: quotation requests are inbound leads, not editable copy.
-    { href: "/admin/quotation-requests", label: "Permintaan Penawaran" },
-    { href: "/admin/media", label: "Media" },
-  ];
-
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
-          <Link href="/admin" className="flex items-baseline gap-2">
-            <span className="text-sm font-bold tracking-tight">CV Amana Perkasa</span>
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Admin</span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <a href="/" target="_blank" rel="noopener noreferrer" className="hidden text-sm text-slate-500 hover:text-slate-900 sm:block">
-              Lihat situs
-            </a>
-            <span className="hidden text-sm text-slate-400 sm:block">{session.username}</span>
-            <form action={logoutAction}>
-              <button type="submit" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                Keluar
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row">
-        <aside className="lg:w-56 lg:shrink-0">
-          <div className="rounded-2xl border border-slate-200 bg-white p-2">
-            <Nav items={items} />
-          </div>
-        </aside>
-        <main className="min-w-0 flex-1 pb-16">{children}</main>
-      </div>
-    </div>
+    <AdminShell username={session.username} groups={buildNavGroups()}>
+      {children}
+    </AdminShell>
   );
 }

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import QuotationStatusForm from "@/components/admin/quotation-status-form";
-import { Card } from "@/components/admin/ui";
+import { NavIcon } from "@/components/admin/icons";
+import { Card, PageHeader } from "@/components/admin/ui";
 import { getQuotationRequest, toWhatsAppNumber } from "@/lib/quotation";
 import { QUOTATION_STATUS_LABELS } from "@/lib/types";
 
@@ -36,13 +37,21 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/quotation-requests" className="text-sm text-slate-500 hover:text-slate-900">
-          ← Kembali ke permintaan penawaran
+        <Link
+          href="/admin/quotation-requests"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+        >
+          <NavIcon name="arrowRight" className="h-4 w-4 rotate-180" /> Kembali ke permintaan penawaran
         </Link>
-        <h1 className="mt-2 text-lg font-bold text-slate-900">Permintaan dari {request.name}</h1>
+        <div className="mt-4">
+          <PageHeader
+            title={`Permintaan dari ${request.name}`}
+            description={`Masuk ${formatDateTime(request.createdAt)}.`}
+          />
+        </div>
       </div>
 
-      <Card title="Detail permintaan" description={`Masuk ${formatDateTime(request.createdAt)}.`}>
+      <Card title="Detail permintaan">
         <dl>
           <Row label="Nama">{request.name}</Row>
           <Row label="Perusahaan">{request.company || "—"}</Row>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import SettingsEditor from "@/components/admin/settings-editor";
-import { Card } from "@/components/admin/ui";
+import { Card, PageHeader } from "@/components/admin/ui";
 import { SETTING_TABS, isSettingsGroup, tabFor } from "@/lib/admin/settings-fields";
 import { loadSettings } from "@/lib/content";
 import { listMedia } from "@/lib/media";
@@ -22,15 +22,18 @@ export default async function SettingsGroupPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6">
-      <Card title="Settings" description="Teks, gambar, dan meta yang dipakai di seluruh situs.">
+      <PageHeader title="Settings" description="Teks, gambar, dan meta yang dipakai di seluruh situs publik." />
+
+      <Card>
         <div className="flex flex-wrap gap-1.5">
           {SETTING_TABS.map((item) => (
             <Link
               key={item.group}
               href={`/admin/settings/${item.group}`}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              aria-current={item.group === tab.group ? "page" : undefined}
+              className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
                 item.group === tab.group
-                  ? "bg-blue-600 text-white"
+                  ? "bg-[#071b35] text-white shadow-sm"
                   : "border border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { saveSettingsAction } from "@/app/admin/actions";
 import type { SettingFieldDef } from "@/lib/admin/settings-fields";
-import { Banner, Card, Field, btnDanger, btnPrimary, btnSecondary, inputClass } from "./ui";
+import { Banner, Card, Field, btnDangerSm, btnPrimary, btnSecondarySm, inputClass } from "./ui";
 
 type StatValue = { value: string; label: string };
 
@@ -72,130 +72,133 @@ export default function SettingsEditor({ group, label, fields, values, media }: 
       {message ? <Banner tone="error">{message}</Banner> : null}
       {saved && !message ? <Banner tone="success">Tersimpan.</Banner> : null}
 
-      <form onSubmit={submit} className="space-y-5">
-        {fields.map((field) => {
-          const id = `settings-${group}-${field.name}`;
+      <form onSubmit={submit} className="space-y-6">
+        <div className="grid gap-5 lg:grid-cols-2">
+          {fields.map((field) => {
+            const id = `settings-${group}-${field.name}`;
 
-          if (field.type === "stats") {
-            return (
-              <div key={field.name}>
-                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {field.label}
-                </div>
-                {errors?.[field.name] ? (
-                  <p className="mb-2 text-xs font-medium text-red-600">{errors[field.name]}</p>
-                ) : null}
-                <div className="space-y-2">
-                  {stats.map((stat, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input
-                        className={`${inputClass} w-28`}
-                        placeholder="360°"
-                        maxLength={40}
-                        value={stat.value}
-                        onChange={(e) =>
-                          setStats((current) =>
-                            current.map((item, i) => (i === index ? { ...item, value: e.target.value } : item)),
-                          )
-                        }
-                      />
-                      <input
-                        className={inputClass}
-                        placeholder="Event Support"
-                        maxLength={80}
-                        value={stat.label}
-                        onChange={(e) =>
-                          setStats((current) =>
-                            current.map((item, i) => (i === index ? { ...item, label: e.target.value } : item)),
-                          )
-                        }
-                      />
+            if (field.type === "stats") {
+              return (
+                <div key={field.name} className="lg:col-span-2">
+                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{field.label}</div>
+                  {errors?.[field.name] ? (
+                    <p className="mb-2 text-xs font-medium text-red-600">{errors[field.name]}</p>
+                  ) : null}
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    {stats.map((stat, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          className={`${inputClass} w-28`}
+                          placeholder="360°"
+                          maxLength={40}
+                          value={stat.value}
+                          onChange={(e) =>
+                            setStats((current) =>
+                              current.map((item, i) => (i === index ? { ...item, value: e.target.value } : item)),
+                            )
+                          }
+                        />
+                        <input
+                          className={inputClass}
+                          placeholder="Event Support"
+                          maxLength={80}
+                          value={stat.label}
+                          onChange={(e) =>
+                            setStats((current) =>
+                              current.map((item, i) => (i === index ? { ...item, label: e.target.value } : item)),
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={`${btnDangerSm} shrink-0`}
+                          onClick={() => setStats((current) => current.filter((_, i) => i !== index))}
+                          aria-label="Hapus statistik"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    {stats.length === 0 ? (
+                      <p className="py-1 text-xs text-slate-400">Belum ada statistik. Tambahkan bila diperlukan.</p>
+                    ) : null}
+                    {stats.length < 6 ? (
                       <button
                         type="button"
-                        className={`${btnDanger} shrink-0 px-2.5 py-1 text-xs`}
-                        onClick={() => setStats((current) => current.filter((_, i) => i !== index))}
-                        aria-label="Hapus statistik"
+                        className={btnSecondarySm}
+                        onClick={() => setStats((current) => [...current, { value: "", label: "" }])}
                       >
-                        ✕
+                        + Tambah statistik
                       </button>
-                    </div>
-                  ))}
-                  {stats.length < 6 ? (
-                    <button
-                      type="button"
-                      className={`${btnSecondary} px-2.5 py-1 text-xs`}
-                      onClick={() => setStats((current) => [...current, { value: "", label: "" }])}
-                    >
-                      + Tambah statistik
-                    </button>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
+              );
+            }
+
+            const wide = field.type === "textarea" || field.type === "image";
+
+            return (
+              <div key={field.name} className={wide ? "lg:col-span-2" : undefined}>
+                <Field label={field.label} help={field.help} error={errors?.[field.name]} htmlFor={id}>
+                  {field.type === "textarea" ? (
+                    <textarea
+                      id={id}
+                      rows={4}
+                      maxLength={field.maxLength}
+                      className={inputClass}
+                      value={text[field.name] ?? ""}
+                      onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
+                    />
+                  ) : (
+                    <input
+                      id={id}
+                      type={field.type === "url" ? "url" : "text"}
+                      maxLength={field.maxLength}
+                      className={inputClass}
+                      value={text[field.name] ?? ""}
+                      onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
+                    />
+                  )}
+
+                  {field.type === "image" ? (
+                    <div className="mt-2 space-y-2">
+                      {text[field.name] ? (
+                        <div className="relative h-24 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                          <Image src={text[field.name]} alt="" className="object-contain" fill sizes="160px" />
+                        </div>
+                      ) : null}
+                      {media.length ? (
+                        <select
+                          className={inputClass}
+                          value=""
+                          onChange={(e) => e.target.value && setText((current) => ({ ...current, [field.name]: e.target.value }))}
+                        >
+                          <option value="">Pilih dari pustaka gambar…</option>
+                          {media.map((item) => (
+                            <option key={item.path} value={item.path}>
+                              {item.alt ? `${item.alt} — ${item.path}` : item.path}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          Belum ada gambar di pustaka. Unggah lewat menu Media, atau tulis path manual di atas.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </Field>
               </div>
             );
-          }
+          })}
+        </div>
 
-          return (
-            <Field
-              key={field.name}
-              label={field.label}
-              help={field.help}
-              error={errors?.[field.name]}
-              htmlFor={id}
-            >
-              {field.type === "textarea" ? (
-                <textarea
-                  id={id}
-                  rows={4}
-                  maxLength={field.maxLength}
-                  className={inputClass}
-                  value={text[field.name] ?? ""}
-                  onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
-                />
-              ) : (
-                <input
-                  id={id}
-                  type={field.type === "url" ? "url" : "text"}
-                  maxLength={field.maxLength}
-                  className={inputClass}
-                  value={text[field.name] ?? ""}
-                  onChange={(e) => setText((current) => ({ ...current, [field.name]: e.target.value }))}
-                />
-              )}
-
-              {field.type === "image" ? (
-                <div className="mt-2 space-y-2">
-                  {text[field.name] ? (
-                    <div className="relative h-24 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                      <Image src={text[field.name]} alt="" className="object-contain" fill sizes="160px" />
-                    </div>
-                  ) : null}
-                  {media.length ? (
-                    <select
-                      className={inputClass}
-                      value=""
-                      onChange={(e) => e.target.value && setText((current) => ({ ...current, [field.name]: e.target.value }))}
-                    >
-                      <option value="">Pilih dari pustaka gambar…</option>
-                      {media.map((item) => (
-                        <option key={item.path} value={item.path}>
-                          {item.alt ? `${item.alt} — ${item.path}` : item.path}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-xs text-slate-400">
-                      Belum ada gambar di pustaka. Unggah lewat menu Media, atau tulis path manual di atas.
-                    </p>
-                  )}
-                </div>
-              ) : null}
-            </Field>
-          );
-        })}
-
-        <button type="submit" disabled={busy} className={btnPrimary}>
-          {busy ? "Menyimpan…" : `Simpan ${label}`}
-        </button>
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5">
+          <button type="submit" disabled={busy} className={btnPrimary}>
+            {busy ? "Menyimpan…" : `Simpan ${label}`}
+          </button>
+        </div>
       </form>
     </Card>
   );

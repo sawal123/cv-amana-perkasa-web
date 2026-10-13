@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { Banner, Card, btnSecondary } from "@/components/admin/ui";
+import { Badge, Banner, Card, EmptyState, PageHeader, btnSecondarySm } from "@/components/admin/ui";
 import { listQuotationRequests } from "@/lib/quotation";
 import { QUOTATION_STATUS_LABELS, type QuotationRequest } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Permintaan Penawaran" };
 
-const BADGE: Record<string, string> = {
-  new: "bg-blue-50 text-blue-700",
-  contacted: "bg-amber-50 text-amber-700",
-  quoted: "bg-violet-50 text-violet-700",
-  closed: "bg-emerald-50 text-emerald-700",
+const BADGE_TONE: Record<string, "info" | "warning" | "violet" | "success" | "neutral"> = {
+  new: "info",
+  contacted: "warning",
+  quoted: "violet",
+  closed: "success",
 };
 
 function formatDate(date: Date): string {
@@ -31,48 +31,52 @@ export default async function QuotationRequestsPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Permintaan Penawaran"
+        description={`${requests.length} permintaan, terbaru di atas.`}
+      />
+
       {error ? <Banner tone="error">{error}</Banner> : null}
 
-      <Card title="Permintaan Penawaran" description={`${requests.length} permintaan, terbaru di atas.`}>
+      <Card>
         {requests.length === 0 ? (
-          <p className="py-6 text-sm text-slate-500">Belum ada permintaan penawaran.</p>
+          <EmptyState
+            icon="inbox"
+            title="Belum ada permintaan penawaran"
+            description="Permintaan dari form publik akan muncul di sini secara otomatis."
+          />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-2.5 pr-3 font-semibold">Tanggal</th>
-                  <th className="py-2.5 pr-3 font-semibold">Nama</th>
-                  <th className="py-2.5 pr-3 font-semibold">Perusahaan</th>
-                  <th className="py-2.5 pr-3 font-semibold">Jenis Event</th>
-                  <th className="py-2.5 pr-3 font-semibold">Kontak</th>
-                  <th className="py-2.5 pr-3 font-semibold">Status</th>
-                  <th className="py-2.5 text-right font-semibold">Aksi</th>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-3 font-semibold">Tanggal</th>
+                  <th className="px-3 py-3 font-semibold">Nama</th>
+                  <th className="px-3 py-3 font-semibold">Perusahaan</th>
+                  <th className="px-3 py-3 font-semibold">Jenis Event</th>
+                  <th className="px-3 py-3 font-semibold">Kontak</th>
+                  <th className="px-3 py-3 font-semibold">Status</th>
+                  <th className="px-3 py-3 text-right font-semibold">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {requests.map((request) => (
-                  <tr key={request.id} className="border-b border-slate-100 align-top last:border-0">
-                    <td className="py-3 pr-3 whitespace-nowrap text-slate-500">{formatDate(request.createdAt)}</td>
-                    <td className="py-3 pr-3 font-medium text-slate-900">{request.name}</td>
-                    <td className="py-3 pr-3 text-slate-600">{request.company || "—"}</td>
-                    <td className="py-3 pr-3 text-slate-600">{request.eventType}</td>
-                    <td className="py-3 pr-3 text-slate-600">
-                      <div>{request.phone}</div>
+                  <tr key={request.id} className="border-b border-slate-100 align-middle transition last:border-0 hover:bg-slate-50/60">
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-500">{formatDate(request.createdAt)}</td>
+                    <td className="px-3 py-3 font-semibold text-slate-900">{request.name}</td>
+                    <td className="px-3 py-3 text-slate-600">{request.company || "—"}</td>
+                    <td className="px-3 py-3 text-slate-600">{request.eventType}</td>
+                    <td className="px-3 py-3 text-slate-600">
+                      <div className="font-medium text-slate-700">{request.phone}</div>
                       {request.email ? <div className="text-xs text-slate-400">{request.email}</div> : null}
                     </td>
-                    <td className="py-3 pr-3">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${BADGE[request.status] ?? "bg-slate-100 text-slate-500"}`}
-                      >
+                    <td className="px-3 py-3">
+                      <Badge tone={BADGE_TONE[request.status] ?? "neutral"}>
                         {QUOTATION_STATUS_LABELS[request.status as keyof typeof QUOTATION_STATUS_LABELS] ?? request.status}
-                      </span>
+                      </Badge>
                     </td>
-                    <td className="py-3 text-right">
-                      <Link
-                        href={`/admin/quotation-requests/${request.id}`}
-                        className={`${btnSecondary} px-2.5 py-1 text-xs`}
-                      >
+                    <td className="px-3 py-3 text-right">
+                      <Link href={`/admin/quotation-requests/${request.id}`} className={btnSecondarySm}>
                         Lihat detail
                       </Link>
                     </td>
