@@ -3,11 +3,13 @@ import { settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { TABLES, type ContentTable } from "@/lib/admin/fields";
 import { countRows } from "@/lib/admin/store";
-import { Banner, Card, btnSecondary } from "@/components/admin/ui";
+import { ActionCard, Banner, Card, EmptyState, PageHeader, StatCard, btnPrimary, btnSecondary } from "@/components/admin/ui";
+import { tablePresentation } from "@/components/admin/nav";
+import type { IconName } from "@/components/admin/icons";
 
 export const dynamic = "force-dynamic";
 
-type Count = { label: string; href: string; total: number; published: number };
+type Count = { label: string; href: string; icon: IconName; total: number; published: number };
 
 async function gather() {
   const keys = Object.keys(TABLES) as ContentTable[];
@@ -21,6 +23,7 @@ async function gather() {
       counts: rows.map<Count>((row) => ({
         label: TABLES[row.key].label,
         href: TABLES[row.key].route,
+        icon: tablePresentation(row.key).icon,
         total: row.total,
         published: row.published,
       })),
@@ -36,6 +39,21 @@ export default async function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Ringkasan Dashboard"
+        description="Kelola konten website CV AMANA PERKASA dari satu tempat."
+        actions={
+          <>
+            <Link href="/admin/content/projects" className={btnPrimary}>
+              Kelola Project
+            </Link>
+            <a href="/" target="_blank" rel="noopener noreferrer" className={btnSecondary}>
+              Buka Situs
+            </a>
+          </>
+        }
+      />
+
       {error ? (
         <Banner tone="error">
           {error} Jalankan migrasi <code className="font-mono text-xs">drizzle/0000_init.sql</code> lalu seed
@@ -51,42 +69,36 @@ export default async function AdminDashboard() {
 
       <Card title="Konten" description="Jumlah baris termasuk yang sedang disembunyikan.">
         {counts.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {counts.map((count) => (
-              <Link
+              <StatCard
                 key={count.href}
+                icon={count.icon}
+                label={count.label}
+                published={count.published}
+                total={count.total}
                 href={count.href}
-                className="rounded-xl border border-slate-200 p-4 transition hover:border-blue-300 hover:bg-blue-50/40"
-              >
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{count.label}</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{count.published}</div>
-                <div className="text-xs text-slate-400">
-                  tayang dari {count.total} baris
-                </div>
-              </Link>
+              />
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-500">Tidak ada data yang bisa dihitung.</p>
+          <EmptyState
+            icon="inbox"
+            title="Tidak ada data yang bisa dihitung."
+            description="Hubungkan database lalu muat ulang halaman ini."
+          />
         )}
       </Card>
 
-      <Card title="Pintasan">
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin/settings/identity" className={btnSecondary}>
-            Ubah teks &amp; SEO
-          </Link>
-          <Link href="/admin/content/projects" className={btnSecondary}>
-            Kelola portfolio
-          </Link>
-          <Link href="/admin/media" className={btnSecondary}>
-            Unggah gambar
-          </Link>
-          <a href="/" className={btnSecondary}>
-            Buka situs
-          </a>
+      <section>
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">Pintasan</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <ActionCard icon="briefcase" title="Kelola Portfolio" description="Tambah dan edit project" href="/admin/content/projects" />
+          <ActionCard icon="settings" title="Ubah teks & SEO" description="Kelola identitas dan metadata website" href="/admin/settings/identity" />
+          <ActionCard icon="image" title="Unggah Gambar" description="Kelola media website" href="/admin/media" />
+          <ActionCard icon="external" title="Buka Situs" description="Lihat website publik" href="/" external />
         </div>
-      </Card>
+      </section>
     </div>
   );
 }

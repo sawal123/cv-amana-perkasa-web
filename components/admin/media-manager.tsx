@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { deleteMediaAction, uploadMediaAction } from "@/app/admin/actions";
-import { Banner, Card, btnDanger, btnPrimary, inputClass } from "./ui";
+import { Banner, Card, EmptyState, btnDangerSm, btnPrimary, inputClass } from "./ui";
 
 type Props = {
   items: Array<{ id: number; filename: string; path: string; mime: string; size: number; alt: string }>;
@@ -86,12 +86,28 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
         {success ? <Banner tone="success">{success}</Banner> : null}
 
         <form onSubmit={submit} className="space-y-4">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
-          />
+          <label
+            htmlFor="media-file"
+            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center transition hover:border-blue-300 hover:bg-blue-50/40"
+          >
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-slate-400 ring-1 ring-slate-200">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                <path d="M12 16V5" />
+                <path d="m8 9 4-4 4 4" />
+                <path d="M5 19h14" />
+              </svg>
+            </span>
+            <span className="mt-3 text-sm font-semibold text-slate-700">Pilih berkas gambar</span>
+            <span className="mt-1 text-xs text-slate-400">atau seret berkas ke area ini</span>
+            <input
+              id="media-file"
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+            />
+          </label>
+
           <input
             type="text"
             className={inputClass}
@@ -100,6 +116,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
             value={alt}
             onChange={(e) => setAlt(e.target.value)}
           />
+
           <button type="submit" disabled={busy} className={btnPrimary}>
             {busy ? "Mengunggah…" : "Unggah"}
           </button>
@@ -108,30 +125,31 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
 
       <Card title="Pustaka gambar" description={`${items.length} berkas.`}>
         {items.length === 0 ? (
-          <p className="py-6 text-sm text-slate-500">Belum ada gambar.</p>
+          <EmptyState
+            icon="image"
+            title="Belum ada gambar"
+            description="Unggah gambar pertama, lalu pilih dari pustaka ini pada form Project, Tim, Galeri, Client, atau Settings."
+          />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {items.map((item) => (
-              <figure key={item.id} className="overflow-hidden rounded-xl border border-slate-200">
-                <div className="relative aspect-[16/10] bg-slate-100">
-                  <Image src={item.path} alt={item.alt || item.filename} className="object-cover" fill sizes="(max-width: 640px) 100vw, 25vw" />
+              <figure key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="relative aspect-[4/3] bg-slate-100">
+                  <Image src={item.path} alt={item.alt || item.filename} className="object-cover" fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" />
                 </div>
-                <figcaption className="space-y-1.5 p-3">
-                  <div className="truncate text-xs font-medium text-slate-700" title={item.filename}>
+                <figcaption className="space-y-2 p-4">
+                  <div className="truncate text-sm font-semibold text-slate-800" title={item.filename}>
                     {item.filename}
                   </div>
                   <div className="truncate font-mono text-[10px] text-slate-400" title={item.path}>
                     {item.path}
                   </div>
-                  <div className="text-[10px] text-slate-400">{formatSize(item.size)}</div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => remove(item.id, item.filename)}
-                    className={`${btnDanger} px-2.5 py-1 text-xs`}
-                  >
-                    Hapus
-                  </button>
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{formatSize(item.size)}</span>
+                    <button type="button" disabled={busy} onClick={() => remove(item.id, item.filename)} className={btnDangerSm}>
+                      Hapus
+                    </button>
+                  </div>
                 </figcaption>
               </figure>
             ))}
