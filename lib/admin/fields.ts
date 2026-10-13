@@ -107,7 +107,7 @@ export const TABLES: Record<ContentTable, TableDef> = {
       { name: "description", label: "Deskripsi", type: "textarea", required: true, maxLength: 1000 },
       { name: "client", label: "Client", type: "text", maxLength: 150, help: "Opsional. Kosongkan bila tidak ingin ditampilkan di situs." },
       { name: "location", label: "Lokasi", type: "text", maxLength: 150, help: "Opsional." },
-      { name: "year", label: "Tahun", type: "text", maxLength: 9, help: 'Opsional. Misalnya "2024".' },
+      { name: "year", label: "Tahun", type: "text", maxLength: 9, help: "Opsional. Contoh: 2026 atau 2025/2026." },
       { name: "scope", label: "Scope pekerjaan", type: "textarea", maxLength: 1000, help: "Opsional. Satu item per baris." },
       { name: "objective", label: "Tujuan / Challenge", type: "textarea", maxLength: 2000, help: "Opsional. Tujuan client, kebutuhan utama, atau tantangan project." },
       { name: "approach", label: "Pendekatan", type: "textarea", maxLength: 2000, help: "Opsional. Pendekatan, strategi produksi, koordinasi, atau solusi yang dilakukan." },

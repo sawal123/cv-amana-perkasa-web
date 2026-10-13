@@ -1,4 +1,6 @@
 import type { MetadataRoute } from "next";
+import { loadPublishedProjects } from "@/lib/content";
+import { projectPath } from "@/lib/project-url";
 import { getSiteOrigin } from "@/lib/site-url";
 
 // Evaluated per request, not baked at build time: SITE_URL comes from the cPanel
@@ -6,13 +8,19 @@ import { getSiteOrigin } from "@/lib/site-url";
 export const dynamic = "force-dynamic";
 
 /**
- * The public site has exactly one canonical route: `/`. Projects are modal
- * content, not routed pages, so there are no project detail URLs to invent — and
- * admin, api and login routes are deliberately absent.
+ * Public routes only: the homepage, the project archive, and one URL per
+ * published project (built from the same id + title slug the pages use).
+ * Unpublished projects are never listed, and admin/api routes stay out.
+ *
+ * The host comes solely from SITE_URL — never inferred from request headers,
+ * which are attacker-controlled behind Passenger — so an invalid value yields an
+ * empty sitemap rather than wrong URLs.
  */
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = getSiteOrigin();
   if (!origin) return [];
+
+  const projects = await loadPublishedProjects();
 
   return [
     {
@@ -20,5 +28,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 1,
     },
+    {
+      url: `${origin}/projects`,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    ...projects.map((project) => ({
+      url: `${origin}${projectPath(project)}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    })),
   ];
 }
