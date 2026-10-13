@@ -37,6 +37,8 @@ import {
 } from "@/lib/quotation";
 import { SETTINGS_GROUPS } from "@/lib/types";
 import { absoluteUrl, getSiteOrigin, parseHttpUrl, parseSiteOrigin, resolveCanonical } from "@/lib/site-url";
+import { parseProjectParam, projectPath, slugifyProjectTitle } from "@/lib/project-url";
+import { shortenDescription } from "@/lib/seo-text";
 import { escapeJsonForScript, serializeJsonLd } from "@/lib/json-ld";
 import {
   checkConfig,
@@ -853,6 +855,59 @@ async function main() {
   check("absoluteUrl null untuk relative tanpa slash awal", absoluteUrl("uploads/a.png", "https://example.com") === null);
   check("absoluteUrl null tanpa origin untuk path relatif", absoluteUrl("/uploads/a.png", null) === null);
   check("absoluteUrl null untuk string kosong", absoluteUrl("", "https://example.com") === null);
+
+  // ------------------------------------------------ project URL strategy
+  // The public project route is `/projects/<id>-<slug>`; these lock the slug
+  // rules, the path builder and the tolerant param parser.
+  const slugCases: Array<[string, string]> = [
+    ["Corporate Conference", "corporate-conference"],
+    ["Wedding & Social Event", "wedding-social-event"],
+    ["Annual Corporate Meeting 2026", "annual-corporate-meeting-2026"],
+    ["  Spasi   Berlebih  ", "spasi-berlebih"],
+    ["2025/2026 Gala", "20252026-gala"],
+    ["Tanda -- Ganda", "tanda-ganda"],
+    ["-Awal dan Akhir-", "awal-dan-akhir"],
+    ["Café Déjà Vu", "cafe-deja-vu"],
+    ["!!!", ""],
+  ];
+  for (const [input, expected] of slugCases) {
+    check(`slugifyProjectTitle(${JSON.stringify(input)}) = ${JSON.stringify(expected)}`, slugifyProjectTitle(input) === expected);
+  }
+
+  check(
+    "projectPath menyusun id + slug",
+    projectPath({ id: 12, title: "Annual Corporate Meeting 2026" }) === "/projects/12-annual-corporate-meeting-2026",
+  );
+  check("projectPath tanpa slug jatuh ke id saja", projectPath({ id: 3, title: "!!!" }) === "/projects/3");
+  check("projectPath tidak membocorkan path traversal", projectPath({ id: 5, title: "../../etc/passwd" }) === "/projects/5-etcpasswd");
+
+  const paramCases: Array<[string, number | null]> = [
+    ["12", 12],
+    ["12-annual-meeting", 12],
+    ["1-corporate-conference", 1],
+    ["999999-not-found", 999999],
+    ["007-leading-zeros", 7],
+    ["abc", null],
+    ["12abc", null],
+    ["-3", null],
+    ["0", null],
+    ["", null],
+  ];
+  for (const [input, expected] of paramCases) {
+    check(`parseProjectParam(${JSON.stringify(input)}) = ${expected}`, parseProjectParam(input) === expected);
+  }
+
+  // --------------------------------------------------- meta description text
+  check("shortenDescription mempertahankan teks pendek", shortenDescription("Deskripsi singkat") === "Deskripsi singkat");
+  check("shortenDescription merapikan whitespace", shortenDescription("  a\n\nb  ") === "a b");
+  const longDescription = shortenDescription("x".repeat(300), 160);
+  check("shortenDescription memotong ke <= max dengan elipsis", longDescription.length <= 160 && longDescription.endsWith("…"), `len=${longDescription.length}`);
+  const wordDescription = shortenDescription("kata ".repeat(80), 20);
+  check(
+    "shortenDescription memotong di batas kata",
+    wordDescription.length <= 20 && wordDescription.endsWith("…") && !wordDescription.includes("  "),
+    JSON.stringify(wordDescription),
+  );
 
   // --------------------------------------------- canonical CMS field validation
   const seoSchema = SETTINGS_SCHEMA_BY_GROUP.seo;

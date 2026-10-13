@@ -1,16 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
-import type { Project, SiteContent } from "@/lib/types";
-import ProjectDetail from "./project-detail";
+import Link from "next/link";
+import { motion } from "motion/react";
+import type { SiteContent } from "@/lib/types";
+import { projectPath } from "@/lib/project-url";
+import PublicFooter from "./public-footer";
+import PublicHeader from "./public-header";
 import QuotationForm from "./quotation-form";
-import { ArrowRight, ArrowUpRight, CloseIcon, MenuIcon } from "./icons";
-
-const nav = [
-  ["Tentang", "#about"], ["Layanan", "#services"], ["Project", "#projects"], ["Tim", "#team"], ["Kontak", "#contact"],
-];
+import { ArrowRight, ArrowUpRight } from "./icons";
 
 const reveal = {
   initial: { opacity: 0, y: 26 },
@@ -33,46 +31,14 @@ function identityLine(role: string, company: string): string {
   return role || company;
 }
 
-function BrandMark({ logo, initials, shortName, company }: { logo: string; initials: string; shortName: string; company: string }) {
-  if (logo) {
-    return <Image src={logo} alt={company} width={180} height={40} className="h-10 w-auto max-w-[180px] object-contain" />;
-  }
-  return <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-sm font-black tracking-tight text-white">{initials}</div><div><div className="text-[11px] font-semibold tracking-[.20em] text-blue-200">CV</div><div className="text-sm font-bold tracking-[.07em] text-white">{shortName}</div></div></div>;
-}
-
 export default function SiteShell({ content }: { content: SiteContent }) {
   const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, clientsPartners: clientList, team: teamList, workflow: workflowList, testimonials: testimonialList, legalities: legalityList } = content;
   const { identity, hero, about, contact } = settings;
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
-
-  useEffect(() => {
-    document.body.style.overflow = activeProject || menuOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [activeProject, menuOpen]);
-
   const whatsappDigits = contact.whatsapp.replace(/\D/g, "");
 
   return <main className="overflow-x-hidden">
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 glass">
-      <div className="container-shell flex h-[76px] items-center justify-between">
-        <a href="#home" aria-label={identity.company}><BrandMark logo={identity.logo} initials={identity.initials} shortName={identity.shortName} company={identity.company} /></a>
-        <nav className="hidden items-center gap-7 md:flex">
-          {nav.map(([label, href]) => <a key={label} href={href} className="text-sm font-medium text-slate-200 transition hover:text-white">{label}</a>)}
-          <a href="#contact" className="rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#071b35] transition hover:bg-blue-100">{identity.navCta}</a>
-        </nav>
-        <button onClick={() => setMenuOpen(v => !v)} className="grid h-11 w-11 place-items-center rounded-full border border-white/15 text-white md:hidden" aria-label="Menu">
-          {menuOpen ? <CloseIcon className="h-5 w-5"/> : <MenuIcon className="h-5 w-5"/>}
-        </button>
-      </div>
-    </header>
-
-    <AnimatePresence>{menuOpen && <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-40 bg-[#041429] pt-28 md:hidden">
-      <div className="container-shell flex flex-col gap-4">
-        {nav.map(([label, href], i) => <motion.a initial={{opacity:0,x:-20}} animate={{opacity:1,x:0}} transition={{delay:i*.05}} key={label} href={href} onClick={() => setMenuOpen(false)} className="border-b border-white/10 py-4 text-2xl font-semibold text-white">{label}</motion.a>)}
-      </div>
-    </motion.div>}</AnimatePresence>
+    <PublicHeader identity={identity} />
 
     <section id="home" className="relative min-h-[790px] bg-[#041429] pt-[76px] text-white">
       <Image src={hero.image} alt={identity.company} fill priority className="object-cover opacity-35" />
@@ -114,7 +80,10 @@ export default function SiteShell({ content }: { content: SiteContent }) {
       <div className="container-shell">
         <motion.div {...reveal} className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between"><div><div className="text-xs font-black uppercase tracking-[.20em] text-blue-600">{settings.projects.kicker}</div><h2 className="mt-4 text-4xl font-black tracking-[-.035em] text-[#071b35] md:text-5xl">{settings.projects.heading}</h2></div><p className="max-w-md text-sm leading-7 text-slate-500">{settings.projects.description}</p></motion.div>
         <div className="mt-12 grid gap-5 md:grid-cols-2">
-          {projectList.map((p,i)=><motion.button {...reveal} transition={{...reveal.transition,delay:(i%2)*.05}} key={p.id} onClick={()=>setActiveProject(p)} className="project-card group relative aspect-[16/10] overflow-hidden rounded-3xl bg-[#071b35] text-left card-shadow"><Image src={p.image} alt={p.title} fill className="object-cover"/><div className="absolute inset-0 bg-gradient-to-t from-[#041429]/95 via-[#041429]/12 to-transparent"/><div className="absolute inset-x-0 bottom-0 p-6 md:p-8"><div className="text-[10px] font-black uppercase tracking-[.18em] text-blue-200">{p.category}</div><div className="mt-2 flex items-end justify-between gap-4"><h3 className="text-2xl font-bold text-white md:text-3xl">{p.title}</h3><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[#071b35] transition group-hover:rotate-45"><ArrowUpRight className="h-5 w-5"/></span></div></div></motion.button>)}
+          {projectList.map((p,i)=><motion.article {...reveal} transition={{...reveal.transition,delay:(i%2)*.05}} key={p.id} className="project-card group relative aspect-[16/10] overflow-hidden rounded-3xl bg-[#071b35] text-left card-shadow"><Image src={p.image} alt={p.title} fill className="object-cover"/><div className="absolute inset-0 bg-gradient-to-t from-[#041429]/95 via-[#041429]/12 to-transparent"/><div className="absolute inset-x-0 bottom-0 p-6 md:p-8"><div className="text-[10px] font-black uppercase tracking-[.18em] text-blue-200">{p.category}</div><div className="mt-2 flex items-end justify-between gap-4"><h3 className="text-2xl font-bold text-white md:text-3xl">{p.title}</h3><span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[#071b35] transition group-hover:rotate-45"><ArrowUpRight className="h-5 w-5"/></span></div></div><Link href={projectPath(p)} aria-label={`Lihat project ${p.title}`} className="absolute inset-0 rounded-3xl focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-400/60"/></motion.article>)}
+        </div>
+        <div className="mt-10 flex justify-center">
+          <Link href="/projects" className="inline-flex items-center gap-2 rounded-full bg-[#071b35] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#0b2a52]">Lihat Semua Project <ArrowRight className="h-4 w-4"/></Link>
         </div>
       </div>
     </section>
@@ -160,8 +129,6 @@ export default function SiteShell({ content }: { content: SiteContent }) {
 
     <section id="contact" className="relative overflow-hidden bg-[#041429] py-24 text-white md:py-32"><div className="absolute inset-0 grid-pattern opacity-50"/><div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[90px]"/><motion.div {...reveal} className="container-shell relative"><div className="grid gap-12 lg:grid-cols-2 lg:items-start lg:gap-16"><div><div className="text-xs font-black uppercase tracking-[.20em] text-blue-300">{contact.kicker}</div><h2 className="mt-5 max-w-xl text-balance text-4xl font-black leading-[1.05] tracking-[-.04em] md:text-5xl">{contact.heading}</h2><p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">{contact.description}</p><div className="mt-10 flex flex-wrap gap-3">{contact.email ? <a href={`mailto:${contact.email}`} className="rounded-full bg-white px-6 py-3.5 text-sm font-black text-[#071b35] transition hover:bg-blue-100">{contact.email}</a> : null}{contact.phone ? <a href={`tel:${contact.phone.replace(/[^+0-9]/g, "")}`} className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/10">{contact.phone}</a> : null}{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">WhatsApp</a> : null}</div>{contact.address ? <div className="mt-8 max-w-md text-sm leading-6 text-slate-400">{contact.address}</div> : null}</div><QuotationForm whatsappDigits={whatsappDigits} copy={{ formHeading: contact.formHeading, formDescription: contact.formDescription, submitLabel: contact.submitLabel, successHeading: contact.successHeading, successDescription: contact.successDescription }} /></div></motion.div></section>
 
-    <footer className="bg-[#031020] py-10 text-white"><div className="container-shell flex flex-col justify-between gap-8 md:flex-row md:items-end"><BrandMark logo={identity.logo} initials={identity.initials} shortName={identity.shortName} company={identity.company} /><div className="text-sm leading-6 text-slate-400 md:text-right"><div>{contact.address}</div><div className="mt-1">{contact.instagram}</div><div className="mt-5 text-xs text-slate-500">© {new Date().getFullYear()} {identity.company}. {identity.copyright}</div></div></div></footer>
-
-    <AnimatePresence>{activeProject && <ProjectDetail project={activeProject} onClose={()=>setActiveProject(null)} />}</AnimatePresence>
+    <PublicFooter identity={identity} contact={contact} />
   </main>;
 }

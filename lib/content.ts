@@ -1,4 +1,5 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
+import { cache } from "react";
 import { defaultContent } from "@/data/site";
 import { getDb } from "@/lib/db";
 import {
@@ -12,8 +13,10 @@ import {
   testimonials as testimonialsTable,
   whyChooseUs as whyUsTable,
   workflowSteps as workflowTable,
+  type ProjectImageRow,
+  type ProjectRow,
 } from "@/lib/db/schema";
-import { SETTINGS_GROUPS, type GalleryImage, type SiteContent, type SiteSettings } from "@/lib/types";
+import { SETTINGS_GROUPS, type GalleryImage, type Project, type SiteContent, type SiteSettings } from "@/lib/types";
 
 type SettingsMap = Partial<Record<keyof SiteSettings, unknown>>;
 
@@ -81,6 +84,46 @@ async function readStoredSettings(): Promise<{ map: SettingsMap; ok: boolean }> 
 }
 
 /**
+ * True only once the database is reachable AND holds at least one settings row.
+ * The single source of the "seeded" decision shared by loadContent and the
+ * project loaders, so an unseeded database renders bundled content everywhere.
+ */
+async function isSeeded(): Promise<boolean> {
+  const { map, ok } = await readStoredSettings();
+  return ok && Object.keys(map).length > 0;
+}
+
+/** Nests gallery rows under their project id, preserving the SQL order. */
+function groupGallery(rows: ProjectImageRow[]): Map<number, GalleryImage[]> {
+  const byProject = new Map<number, GalleryImage[]>();
+  for (const row of rows) {
+    const list = byProject.get(row.projectId) ?? [];
+    list.push({ id: row.id, image: row.image, caption: row.caption });
+    byProject.set(row.projectId, list);
+  }
+  return byProject;
+}
+
+/** Maps one `projects` row plus its gallery into the public Project shape. */
+function toProject(row: ProjectRow, gallery: GalleryImage[]): Project {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    image: row.image,
+    description: row.description,
+    client: row.client,
+    location: row.location,
+    year: row.year,
+    scope: row.scope,
+    objective: row.objective,
+    approach: row.approach,
+    outcome: row.outcome,
+    gallery,
+  };
+}
+
+/**
  * True only once the database is reachable AND has been seeded. An unseeded or
  * broken database therefore renders the bundled content, while a seeded one is
  * honoured exactly — deleting every project in the admin really does empty the
@@ -118,31 +161,12 @@ export async function loadContent(): Promise<SiteContent> {
 
     // Group gallery rows per project. A project with no gallery simply has no
     // entry, which maps to [] below — that is the "no gallery" case, not an error.
-    const galleryByProject = new Map<number, GalleryImage[]>();
-    for (const row of galleryRows) {
-      const list = galleryByProject.get(row.projectId) ?? [];
-      list.push({ id: row.id, image: row.image, caption: row.caption });
-      galleryByProject.set(row.projectId, list);
-    }
+    const galleryByProject = groupGallery(galleryRows);
 
     return {
       settings,
       services: serviceRows.map((r) => ({ id: r.id, no: r.no, title: r.title, description: r.description })),
-      projects: projectRows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        category: r.category,
-        image: r.image,
-        description: r.description,
-        client: r.client,
-        location: r.location,
-        year: r.year,
-        scope: r.scope,
-        objective: r.objective,
-        approach: r.approach,
-        outcome: r.outcome,
-        gallery: galleryByProject.get(r.id) ?? [],
-      })),
+      projects: projectRows.map((r) => toProject(r, galleryByProject.get(r.id) ?? [])),
       whyChooseUs: whyUsRows.map((r) => ({ id: r.id, title: r.title, description: r.description })),
       clientsPartners: clientRows.map((r) => ({ id: r.id, name: r.name, logo: r.logo })),
       team: teamRows.map((r) => ({ id: r.id, role: r.role, name: r.name, description: r.description, photo: r.photo })),
@@ -176,6 +200,74 @@ function emptyLists() {
     legalities: [],
   };
 }
+
+/**
+ * Every published project in CMS order (position, then id), each carrying its
+ * ordered gallery. Used by the `/projects` archive and the sitemap.
+ *
+ * Follows the same contract as loadContent: an unreachable or never-seeded
+ * database serves the bundled projects, while a seeded one is honoured exactly —
+ * a portfolio the operator emptied really does render empty. Wrapped in cache so
+ * metadata and the page body share one round-trip per request.
+ */
+export const loadPublishedProjects = cache(async (): Promise<Project[]> => {
+  if (!(await isSeeded())) return defaultContent.projects;
+
+  try {
+    const db = getDb();
+    const [projectRows, galleryRows] = await Promise.all([
+      db
+        .select()
+        .from(projectsTable)
+        .where(eq(projectsTable.published, true))
+        .orderBy(asc(projectsTable.position), asc(projectsTable.id)),
+      db
+        .select()
+        .from(projectImagesTable)
+        .orderBy(asc(projectImagesTable.position), asc(projectImagesTable.id)),
+    ]);
+    const galleryByProject = groupGallery(galleryRows);
+    return projectRows.map((row) => toProject(row, galleryByProject.get(row.id) ?? []));
+  } catch (error) {
+    warnOnce("project tables unreadable", error);
+    return [];
+  }
+});
+
+/**
+ * One published project with its ordered gallery, or null when the id is missing
+ * or unpublished. A single gallery query for the one project — no per-row loop.
+ * The detail route resolves its own 404/redirect from this.
+ */
+export const loadPublishedProjectById = cache(async (id: number): Promise<Project | null> => {
+  if (!(await isSeeded())) {
+    return defaultContent.projects.find((project) => project.id === id) ?? null;
+  }
+
+  try {
+    const db = getDb();
+    const [row] = await db
+      .select()
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, id), eq(projectsTable.published, true)))
+      .limit(1);
+    if (!row) return null;
+
+    const galleryRows = await db
+      .select()
+      .from(projectImagesTable)
+      .where(eq(projectImagesTable.projectId, id))
+      .orderBy(asc(projectImagesTable.position), asc(projectImagesTable.id));
+
+    return toProject(
+      row,
+      galleryRows.map((g) => ({ id: g.id, image: g.image, caption: g.caption })),
+    );
+  } catch (error) {
+    warnOnce("project table unreadable", error);
+    return null;
+  }
+});
 
 export async function loadSettings(): Promise<SiteSettings> {
   const { map, ok } = await readStoredSettings();

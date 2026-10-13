@@ -426,6 +426,128 @@ try {
   check("GET /sitemap.xml 200", sitemap.status === 200, `status=${sitemap.status}`);
   check("sitemap.xml berupa urlset", sitemapBody.includes("<urlset"));
   check("sitemap.xml tidak mengiklankan /admin", !sitemapBody.includes("/admin"));
+  check("sitemap.xml tidak mengiklankan /api", !sitemapBody.includes("/api"));
+  // The sitemap carries URLs only when SITE_URL is a valid origin; when it is,
+  // the archive and one path per published project must be present.
+  if (sitemapBody.includes("<loc>")) {
+    check("sitemap.xml memuat /projects", sitemapBody.includes("/projects</loc>"));
+    check("sitemap.xml memuat path project tayang", sitemapBody.includes("/projects/1-corporate-conference</loc>"));
+  } else {
+    console.log("  SKIP  sitemap project URLs (SITE_URL belum diset di server ini)");
+  }
+
+  // ---- public project routes -------------------------------------------
+  // The portfolio moved from a landing-page modal to real URLs: /projects and
+  // /projects/<id>-<slug>. This covers the archive, the detail page, permanent
+  // redirects for stale/slug-less URLs, 404s, and project metadata.
+  const PR = "E2E-PROJROUTE";
+  const richTitle = `${PR} Annual Corporate Meeting 2026`;
+  const richSlug = "e2e-projroute-annual-corporate-meeting-2026";
+
+  await connection.query(
+    "INSERT INTO projects (title, category, image, description, client, location, year, scope, objective, approach, outcome, position, published) VALUES (?, 'Corporate Event', '/projects/corporate-conference.png', ?, ?, ?, '2098', ?, ?, ?, ?, 80, 1)",
+    [
+      richTitle,
+      `${PR}-DESKRIPSI`,
+      `${PR}-CLIENT`,
+      `${PR}-LOKASI`,
+      `${PR}-SCOPE-A\n${PR}-SCOPE-B`,
+      `${PR}-TUJUAN`,
+      `${PR}-PENDEKATAN`,
+      `${PR}-HASIL`,
+    ],
+  );
+  const [richRow] = (await connection.query("SELECT id FROM projects WHERE title = ?", [richTitle]))[0];
+  const richId = richRow.id;
+  const canonicalParam = `${richId}-${richSlug}`;
+  const canonicalPath = `/projects/${canonicalParam}`;
+
+  const galleryPath = `/uploads/${PR}-1.png`;
+  await connection.query("INSERT INTO media (filename, path, mime) VALUES (?, ?, 'image/png')", [`${PR}-1.png`, galleryPath]);
+  await connection.query("INSERT INTO project_images (project_id, image, caption, position) VALUES (?, ?, ?, 1)", [richId, galleryPath, `${PR}-GALERI`]);
+
+  // Archive page.
+  const archive = await fetch(`${origin}/projects`);
+  const archiveHtml = archive.status === 200 ? await archive.text() : "";
+  check("GET /projects -> 200", archive.status === 200, `status=${archive.status}`);
+  check("archive menampilkan project tayang", archiveHtml.includes(richTitle));
+  check("archive menampilkan cover", archiveHtml.includes("/projects/corporate-conference.png"));
+  check("archive menampilkan deskripsi", archiveHtml.includes(`${PR}-DESKRIPSI`));
+  check("archive menampilkan tahun", archiveHtml.includes("2098"));
+  check("archive menautkan ke detail canonical", archiveHtml.includes(canonicalPath));
+  check("archive menampilkan CTA Lihat Project", archiveHtml.includes("Lihat Project"));
+
+  // Detail page for the canonical URL.
+  const detailRes = await fetch(`${origin}${canonicalPath}`, { redirect: "manual" });
+  const detailHtml = detailRes.status === 200 ? await detailRes.text() : "";
+  check("GET /projects/{canonical} -> 200", detailRes.status === 200, `status=${detailRes.status}`);
+  check("detail menampilkan judul", detailHtml.includes(richTitle));
+  check("detail menampilkan kategori", detailHtml.includes("Corporate Event"));
+  check("detail menampilkan tahun", detailHtml.includes("2098"));
+  check("detail menampilkan deskripsi", detailHtml.includes(`${PR}-DESKRIPSI`));
+  check("detail menampilkan client & lokasi", detailHtml.includes(`${PR}-CLIENT`) && detailHtml.includes(`${PR}-LOKASI`));
+  check("detail menampilkan scope", detailHtml.includes(`${PR}-SCOPE-A`) && detailHtml.includes(`${PR}-SCOPE-B`));
+  check(
+    "detail menampilkan case study",
+    detailHtml.includes(`${PR}-TUJUAN`) && detailHtml.includes(`${PR}-PENDEKATAN`) && detailHtml.includes(`${PR}-HASIL`),
+  );
+  check("detail menampilkan galeri", detailHtml.includes(galleryPath) && detailHtml.includes(`${PR}-GALERI`));
+  check("detail menampilkan project lainnya", detailHtml.includes("Project Lainnya"));
+
+  // Stale slug and slug-less id both resolve by id, then redirect permanently.
+  for (const requested of [`${richId}-old-name`, `${richId}`]) {
+    const res = await fetch(`${origin}/projects/${requested}`, { redirect: "manual" });
+    const redirectTo = res.headers.get("location") ?? "";
+    check(
+      `GET /projects/${requested} -> 308 ke canonical`,
+      res.status === 308 && redirectTo.endsWith(canonicalPath),
+      `status=${res.status} location=${redirectTo}`,
+    );
+  }
+
+  // Unknown and invalid params are 404, never a redirect to the homepage.
+  for (const missing of ["abc", "999999-not-found", "0-zero"]) {
+    const res = await fetch(`${origin}/projects/${missing}`, { redirect: "manual" });
+    check(`GET /projects/${missing} -> 404`, res.status === 404, `status=${res.status}`);
+  }
+
+  // Unpublished projects must vanish from the archive and 404 on detail.
+  await connection.query("UPDATE projects SET published = 0 WHERE id = ?", [richId]);
+  const hiddenArchive = await (await fetch(`${origin}/projects`)).text();
+  check("archive menyembunyikan project unpublished", !hiddenArchive.includes(richTitle));
+  const hiddenDetail = await fetch(`${origin}${canonicalPath}`, { redirect: "manual" });
+  check("project unpublished -> 404", hiddenDetail.status === 404, `status=${hiddenDetail.status}`);
+  await connection.query("UPDATE projects SET published = 1 WHERE id = ?", [richId]);
+
+  // Metadata: project title in <title>, og tags, and a canonical when an origin
+  // is configured (the same condition the sitemap uses).
+  const detailTitle = (detailHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] ?? "";
+  check("detail <title> memuat judul project", detailTitle.trim().startsWith(richTitle), detailTitle.trim());
+  check("detail og:title memuat judul project", /<meta[^>]+property="og:title"[^>]+content="[^"]*E2E-PROJROUTE/.test(detailHtml));
+  const archiveTitle = (archiveHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] ?? "";
+  check("archive <title> memuat Projects", archiveTitle.trim().startsWith("Projects"), archiveTitle.trim());
+  if (detailHtml.includes('rel="canonical"')) {
+    // Absolute when an origin exists, so assert on the path suffix.
+    check("detail canonical = path project", detailHtml.includes(`${canonicalPath}"`));
+    check("detail og:image memakai cover", /<meta[^>]+property="og:image"[^>]+content="[^"]*corporate-conference\.png"/.test(detailHtml));
+  } else {
+    console.log("  SKIP  canonical/og:image project (SITE_URL/canonical belum diset)");
+  }
+
+  // A malformed canonical must never 500 the project archive.
+  const seoGuard = await snapshot("seo");
+  await connection.query("UPDATE settings SET `value` = JSON_SET(`value`, '$.canonical', 'javascript:alert(1)') WHERE `key` = 'seo'");
+  const archiveBadCanonical = await fetch(`${origin}/projects`);
+  await archiveBadCanonical.text();
+  check("canonical rusak -> /projects tetap 200", archiveBadCanonical.status === 200, `status=${archiveBadCanonical.status}`);
+  await connection.query("UPDATE settings SET `value` = ? WHERE `key` = 'seo'", [seoGuard]);
+
+  // Clean up the route-test rows.
+  await connection.query("DELETE FROM project_images WHERE project_id = ?", [richId]);
+  await connection.query("DELETE FROM projects WHERE id = ?", [richId]);
+  await connection.query("DELETE FROM media WHERE filename LIKE ?", [`${PR}%`]);
+  const routeLeft = (await connection.query("SELECT COUNT(*) AS n FROM projects WHERE title LIKE ?", [`${PR}%`]))[0][0].n;
+  check("baris uji project route dibersihkan", routeLeft === 0);
 
   const health = await fetch(`${origin}/api/health`);
   const healthText = await health.text();

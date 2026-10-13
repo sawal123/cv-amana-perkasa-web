@@ -75,8 +75,8 @@ Akses di `/admin`, login dengan `ADMIN_USERNAME` / `ADMIN_PASSWORD` dari seed.
   di form Project, Tim, Galeri, Client, Testimonial, dan Settings
 
 Project juga punya blok **case study** opsional: `Tujuan / Challenge`,
-`Pendekatan`, dan `Hasil / Outcome`. Blok ini tampil di modal detail project dan
-disembunyikan bila ketiganya kosong.
+`Pendekatan`, dan `Hasil / Outcome`. Blok ini tampil di halaman detail project
+(`/projects/<id>-<slug>`) dan disembunyikan bila ketiganya kosong.
 
 Urutan baris di admin sama persis dengan urutan tampil di situs.
 
@@ -106,10 +106,13 @@ lib/admin/fields.ts     registry kolom konten → form admin + validasi
 lib/admin/settings-fields.ts  registry field Settings
 lib/admin/store.ts      CRUD generik untuk tabel konten
 lib/admin/gallery.ts    galeri per project (tambah/urut/hapus/caption)
-lib/content.ts          loadContent() / loadSettings()  ← inti seluruh sistem
+lib/content.ts          loadContent() / loadSettings() / loadPublishedProjects()
+lib/project-url.ts      slug + path project (/projects/<id>-<slug>)
 data/site.json          konten bawaan + fallback
 components/site-shell.tsx   terima prop `content`, tidak impor data langsung
-components/project-detail.tsx  modal detail project + galeri + lightbox
+components/public-header.tsx / public-footer.tsx  header & footer publik
+components/project-gallery.tsx  galeri project + lightbox (client)
+app/projects/           arsip project (/) dan halaman detail (/[project])
 ```
 
 `settings` disimpan key/value sebagai JSON per grup (`identity`, `hero`, `about`,
