@@ -7,7 +7,7 @@
  *
  * Needs DATABASE_URL. Creates its own rows and files and removes them again.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +19,9 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 // @ts-expect-error next.config.mjs does not have TypeScript declaration
 import nextConfig from "../next.config.mjs";
 import { SignJWT } from "jose";
+import * as adminActions from "@/app/admin/actions";
 import { POST as uploadBrochureRoute } from "@/app/api/admin/brochures/route";
+import { POST as updateBrochureRoute } from "@/app/api/admin/brochures/[id]/route";
 import { GET as downloadBrochureRoute } from "@/app/brochures/[id]/download/route";
 import {
   addGalleryImage,
@@ -46,6 +48,7 @@ import {
   resolveBrochureFilePath,
   sanitizeOriginalFilename,
   setBrochurePublished,
+  updateBrochureWithFile,
 } from "@/lib/brochures";
 import {
   brochureStoragePath,
@@ -1276,6 +1279,121 @@ async function main() {
       if (routeItem) {
         await deleteBrochure(routeItem.id);
       }
+
+      // ------------------------------------------------------------- PR #10 regression tests
+      // 1. valid replacement + invalid title => old PDF and DB remain unchanged
+      const rowABeforeInvalid = await getBrochureById(itemA.id);
+      const invalidTitleFd = new FormData();
+      invalidTitleFd.set("title", "   ");
+      invalidTitleFd.set("file", fakePdf("should-not-replace.pdf", 512));
+
+      const invalidTitleReq = new Request(`http://localhost:3000/api/admin/brochures/${itemA.id}`, {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: invalidTitleFd,
+      });
+      const invalidTitleRes = await updateBrochureRoute(invalidTitleReq, {
+        params: Promise.resolve({ id: String(itemA.id) }),
+      });
+      check("valid replacement + invalid title => 400", invalidTitleRes.status === 400);
+
+      const rowAAfterInvalid = await getBrochureById(itemA.id);
+      check(
+        "valid replacement + invalid title => old PDF and DB remain unchanged",
+        Boolean(
+          rowAAfterInvalid &&
+            rowABeforeInvalid &&
+            rowAAfterInvalid.title === rowABeforeInvalid.title &&
+            rowAAfterInvalid.storedName === rowABeforeInvalid.storedName &&
+            existsSync(join(tempDir, "brochures", rowABeforeInvalid.storedName)),
+        ),
+      );
+
+      // 2. simulated DB failure during combined replacement => old PDF/metadata remain and new temporary PDF is removed
+      const beforeSimFiles = readdirSync(join(tempDir, "brochures"));
+      const failingDb = {
+        select: getDb().select.bind(getDb()),
+        update: () => ({
+          set: () => ({
+            where: async () => {
+              throw new Error("Simulated DB connection failure during combined replacement");
+            },
+          }),
+        }),
+      };
+
+      let simDbErrorThrown = false;
+      try {
+        await updateBrochureWithFile(
+          itemA.id,
+          {
+            title: "TITLE SHOULD NOT PERSIST",
+            file: fakePdf("temp-sim-failure.pdf", 512),
+          },
+          failingDb,
+        );
+      } catch {
+        simDbErrorThrown = true;
+      }
+      check("simulated DB failure throws error", simDbErrorThrown);
+
+      const afterSimRow = await getBrochureById(itemA.id);
+      const afterSimFiles = readdirSync(join(tempDir, "brochures"));
+      check(
+        "simulated DB failure during combined replacement => old PDF/metadata remain and new temporary PDF is removed",
+        Boolean(
+          afterSimRow &&
+            rowABeforeInvalid &&
+            afterSimRow.title === rowABeforeInvalid.title &&
+            afterSimRow.storedName === rowABeforeInvalid.storedName &&
+            existsSync(join(tempDir, "brochures", rowABeforeInvalid.storedName)) &&
+            afterSimFiles.length === beforeSimFiles.length &&
+            !afterSimFiles.some((f) => !beforeSimFiles.includes(f)),
+        ),
+      );
+
+      // 3. createBrochureAction no longer exists
+      check("createBrochureAction no longer exists", ("createBrochureAction" in adminActions) === false);
+
+      // 4. updateBrochureAction cannot accept/replace a PDF
+      const updateActionPdfFd = new FormData();
+      updateActionPdfFd.set("title", "Attempted PDF via Action");
+      updateActionPdfFd.set("file", fakePdf("action-pdf.pdf", 256));
+      const updateActionPdfRes = await adminActions.updateBrochureAction(itemA.id, updateActionPdfFd);
+      check(
+        "updateBrochureAction cannot accept/replace a PDF",
+        updateActionPdfRes.ok === false && !!updateActionPdfRes.errors?.file,
+      );
+      const rowAfterAction = await getBrochureById(itemA.id);
+      check(
+        "updateBrochureAction tidak mengganti stored_name brosur",
+        rowAfterAction?.storedName === rowABeforeInvalid?.storedName,
+      );
+
+      // 5. POST /api/admin/brochures?id=... does not act as update endpoint
+      const updateViaCreateFd = new FormData();
+      updateViaCreateFd.set("title", "ATTEMPTED UPDATE VIA CREATE");
+      updateViaCreateFd.set("file", fakePdf("attempt.pdf", 256));
+      const badCreateReq = new Request(`http://localhost:3000/api/admin/brochures?id=${itemA.id}`, {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: updateViaCreateFd,
+      });
+      const badCreateRes = await uploadBrochureRoute(badCreateReq);
+      check("POST /api/admin/brochures?id=... does not act as update endpoint", badCreateRes.status === 400);
+      const rowAfterBadCreate = await getBrochureById(itemA.id);
+      check(
+        "POST /api/admin/brochures?id=... did not modify brochure",
+        rowAfterBadCreate?.title === rowABeforeInvalid?.title,
+      );
+
+      // 6. malformed session cookie => 401, never 500
+      const malformedCookieReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: "amana_admin=%E0%A4%A" },
+      });
+      const malformedCookieRes = await uploadBrochureRoute(malformedCookieReq);
+      check("malformed session cookie => 401, never 500", malformedCookieRes.status === 401);
 
       // Delete: DB first, then the physical file; a missing file is not a failure.
       const rowB = await getBrochureById(itemB.id);

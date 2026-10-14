@@ -233,6 +233,15 @@ export async function createBrochure(input: {
   description: string;
   file: File;
 }): Promise<BrochureResult> {
+  const trimmedTitle = (input.title ?? "").trim();
+  if (trimmedTitle.length === 0 || trimmedTitle.length > 150) {
+    return { ok: false, error: "Judul wajib diisi (maksimal 150 karakter)." };
+  }
+  const trimmedDesc = (input.description ?? "").trim();
+  if (trimmedDesc.length > 500) {
+    return { ok: false, error: "Deskripsi maksimal 500 karakter." };
+  }
+
   const check = await readBrochureFile(input.file);
   if (!check.ok) return check;
 
@@ -242,8 +251,8 @@ export async function createBrochure(input: {
   const db = getDb();
   try {
     await db.insert(brochuresTable).values({
-      title: input.title.trim().slice(0, 150),
-      description: input.description.trim().slice(0, 500),
+      title: trimmedTitle.slice(0, 150),
+      description: trimmedDesc.slice(0, 500),
       filename,
       storedName,
       mime: BROCHURE_MIME,
@@ -266,56 +275,130 @@ export async function createBrochure(input: {
   return { ok: true };
 }
 
-/** Metadata only — the current PDF stays exactly as it is. */
+export type UpdateBrochureInput = {
+  title?: string;
+  description?: string;
+  file?: File | null;
+};
+
+/**
+ * Single transactional service operation for brochure update / replacement:
+ * 1. Validate metadata first (title, description).
+ * 2. Validate PDF file (if provided).
+ * 3. Write new UUID PDF to disk (if provided).
+ * 4. Update title + description + filename + stored_name + mime + size together in DB.
+ * 5. If DB update fails: delete new UUID PDF and preserve old DB row and file.
+ * 6. Only after DB success: delete old PDF file.
+ */
+export async function updateBrochureWithFile(
+  id: number,
+  input: UpdateBrochureInput,
+  dbOverride?: any,
+): Promise<BrochureResult> {
+  const db = dbOverride ?? getDb();
+
+  let row: BrochureRow | null = null;
+  if (dbOverride && typeof dbOverride.select === "function") {
+    const [overrideRow] = await dbOverride.select().from(brochuresTable).where(eq(brochuresTable.id, id)).limit(1);
+    row = overrideRow ?? null;
+  } else {
+    row = await getBrochureById(id);
+  }
+
+  if (!row) return { ok: false, error: "Brosur tidak ditemukan." };
+
+  // 1. Validate metadata first
+  let newTitle: string | undefined;
+  if (input.title !== undefined) {
+    const trimmed = input.title.trim();
+    if (trimmed.length === 0 || trimmed.length > 150) {
+      return { ok: false, error: "Judul wajib diisi (maksimal 150 karakter)." };
+    }
+    newTitle = trimmed.slice(0, 150);
+  }
+
+  let newDescription: string | undefined;
+  if (input.description !== undefined) {
+    const trimmed = input.description.trim();
+    if (trimmed.length > 500) {
+      return { ok: false, error: "Deskripsi maksimal 500 karakter." };
+    }
+    newDescription = trimmed.slice(0, 500);
+  }
+
+  // 2. Validate PDF (if provided)
+  let check: BrochureFileCheck | null = null;
+  if (input.file) {
+    check = await readBrochureFile(input.file);
+    if (!check.ok) return check;
+  }
+
+  // 3. Write new UUID PDF (if provided)
+  let newStoredName: string | null = null;
+  let newFilename: string | null = null;
+  if (check && check.ok && input.file) {
+    newStoredName = await writeBrochureFile(check.buffer);
+    newFilename = sanitizeOriginalFilename(input.file.name);
+  }
+
+  // 4. Update title + description + filename + stored_name + mime + size together
+  const updateValues: Record<string, unknown> = {};
+  if (newTitle !== undefined) {
+    updateValues.title = newTitle;
+  }
+  if (newDescription !== undefined) {
+    updateValues.description = newDescription;
+  }
+  if (newStoredName && newFilename && check && check.ok) {
+    updateValues.filename = newFilename;
+    updateValues.storedName = newStoredName;
+    updateValues.mime = BROCHURE_MIME;
+    updateValues.size = check.buffer.length;
+  }
+
+  if (Object.keys(updateValues).length > 0) {
+    try {
+      await db
+        .update(brochuresTable)
+        .set(updateValues)
+        .where(eq(brochuresTable.id, id));
+    } catch (error) {
+      // 5. If DB update fails: delete new PDF and preserve old DB/file
+      if (newStoredName) {
+        await unlink(brochureStoragePath(newStoredName)).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  // 6. Only after DB success: delete old PDF
+  if (newStoredName) {
+    const oldPath = resolveBrochureFilePath(row.storedName);
+    if (oldPath) await unlink(oldPath).catch(() => undefined);
+  }
+
+  return { ok: true };
+}
+
+/** Metadata only — delegates to updateBrochureWithFile. */
 export async function updateBrochure(
   id: number,
   input: { title: string; description: string },
+  dbOverride?: any,
 ): Promise<BrochureResult> {
-  const row = await getBrochureById(id);
-  if (!row) return { ok: false, error: "Brosur tidak ditemukan." };
-
-  await getDb()
-    .update(brochuresTable)
-    .set({
-      title: input.title.trim().slice(0, 150),
-      description: input.description.trim().slice(0, 500),
-    })
-    .where(eq(brochuresTable.id, id));
-  return { ok: true };
+  return updateBrochureWithFile(id, input, dbOverride);
 }
 
 /**
  * Validate new PDF → write new file → point the row at it → delete the old file.
- * The old PDF is only removed once the database successfully references the new
- * one; if the update fails, the new file is cleaned up and the old pairing
- * stays intact.
+ * Delegates to updateBrochureWithFile for atomic transactional update.
  */
-export async function replaceBrochureFile(id: number, file: File): Promise<BrochureResult> {
-  const row = await getBrochureById(id);
-  if (!row) return { ok: false, error: "Brosur tidak ditemukan." };
-
-  const check = await readBrochureFile(file);
-  if (!check.ok) return check;
-
-  const storedName = await writeBrochureFile(check.buffer);
-  try {
-    await getDb()
-      .update(brochuresTable)
-      .set({
-        filename: sanitizeOriginalFilename(file.name),
-        storedName,
-        mime: BROCHURE_MIME,
-        size: check.buffer.length,
-      })
-      .where(eq(brochuresTable.id, id));
-  } catch (error) {
-    await unlink(brochureStoragePath(storedName)).catch(() => undefined);
-    throw error;
-  }
-
-  const oldPath = resolveBrochureFilePath(row.storedName);
-  if (oldPath) await unlink(oldPath).catch(() => undefined);
-  return { ok: true };
+export async function replaceBrochureFile(
+  id: number,
+  file: File,
+  dbOverride?: any,
+): Promise<BrochureResult> {
+  return updateBrochureWithFile(id, { file }, dbOverride);
 }
 
 export async function setBrochurePublished(id: number, published: boolean): Promise<BrochureResult> {

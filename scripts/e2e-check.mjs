@@ -454,7 +454,46 @@ try {
       "replacement still transactional",
       afterBadRow?.stored_name === e2eBrochureRow.stored_name && existsSync(join(uploadsDir, "brochures", afterBadRow.stored_name)),
     );
+
+    // valid replacement + invalid title => old PDF and DB remain unchanged
+    const invalidTitleFd = new FormData();
+    invalidTitleFd.set("title", "   ");
+    invalidTitleFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "valid.pdf");
+    const invalidTitleRes = await fetch(`${origin}/api/admin/brochures/${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: invalidTitleFd,
+    });
+    check("valid replacement + invalid title -> 400", invalidTitleRes.status === 400);
+
+    const [afterInvalidRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check(
+      "valid replacement + invalid title => old PDF and DB remain unchanged",
+      afterInvalidRow?.title === e2eBrochureRow.title &&
+        afterInvalidRow?.stored_name === e2eBrochureRow.stored_name &&
+        existsSync(join(uploadsDir, "brochures", e2eBrochureRow.stored_name)),
+    );
+
+    // POST /api/admin/brochures?id=... does not act as update endpoint
+    const badCreateFd = new FormData();
+    badCreateFd.set("title", "ATTEMPTED_UPDATE_VIA_CREATE");
+    badCreateFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "test.pdf");
+    const badCreateRes = await fetch(`${origin}/api/admin/brochures?id=${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: badCreateFd,
+    });
+    check("POST /api/admin/brochures?id=... does not act as update endpoint", badCreateRes.status === 400);
+    const [afterBadCreateRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check("POST /api/admin/brochures?id=... did not modify brochure", afterBadCreateRow?.title === e2eBrochureRow.title);
   }
+
+  // malformed session cookie => 401, never 500
+  const malformedCookieRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: "amana_admin=%E0%A4%A" },
+  });
+  check("malformed session cookie => 401, never 500", malformedCookieRes.status === 401, `status=${malformedCookieRes.status}`);
 
   // 5. hostile/non-pdf extension downloads with .pdf filename
   const hostileUploadFd = new FormData();

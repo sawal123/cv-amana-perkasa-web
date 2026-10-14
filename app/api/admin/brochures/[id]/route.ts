@@ -4,9 +4,8 @@ import { getSession } from "@/lib/auth";
 import {
   MAX_BROCHURE_BYTES,
   getBrochureById,
-  replaceBrochureFile,
   revalidateBrochures,
-  updateBrochure,
+  updateBrochureWithFile,
 } from "@/lib/brochures";
 
 export const dynamic = "force-dynamic";
@@ -43,26 +42,8 @@ async function handleUpdate(
     return NextResponse.json({ ok: false, message: "Gagal memproses data formulir." }, { status: 400 });
   }
 
-  const file = formData.get("file");
-  const replacement = file instanceof File && file.size > 0 ? file : null;
-
-  if (replacement) {
-    if (replacement.size > MAX_BROCHURE_BYTES) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: `Ukuran maksimum ${Math.floor(MAX_BROCHURE_BYTES / 1024 / 1024)} MB.`,
-          errors: { file: `Ukuran maksimum ${Math.floor(MAX_BROCHURE_BYTES / 1024 / 1024)} MB.` },
-        },
-        { status: 400 },
-      );
-    }
-    const replaced = await replaceBrochureFile(id, replacement);
-    if (!replaced.ok) {
-      return NextResponse.json({ ok: false, errors: { file: replaced.error } }, { status: 400 });
-    }
-  }
-
+  // 3. Validate metadata first before any PDF processing/replacement
+  let title: string | undefined;
   if (formData.has("title")) {
     const parsedTitle = titleSchema.safeParse(formData.get("title"));
     if (!parsedTitle.success) {
@@ -71,6 +52,11 @@ async function handleUpdate(
         { status: 400 },
       );
     }
+    title = parsedTitle.data;
+  }
+
+  let description: string | undefined;
+  if (formData.has("description")) {
     const rawDesc = formData.get("description");
     const parsedDesc = descriptionSchema.safeParse(typeof rawDesc === "string" ? rawDesc : "");
     if (!parsedDesc.success) {
@@ -79,10 +65,35 @@ async function handleUpdate(
         { status: 400 },
       );
     }
-    const updated = await updateBrochure(id, { title: parsedTitle.data, description: parsedDesc.data });
-    if (!updated.ok) {
-      return NextResponse.json({ ok: false, message: updated.error }, { status: 400 });
-    }
+    description = parsedDesc.data;
+  }
+
+  const file = formData.get("file");
+  const replacement = file instanceof File && file.size > 0 ? file : null;
+
+  if (replacement && replacement.size > MAX_BROCHURE_BYTES) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: `Ukuran maksimum ${Math.floor(MAX_BROCHURE_BYTES / 1024 / 1024)} MB.`,
+        errors: { file: `Ukuran maksimum ${Math.floor(MAX_BROCHURE_BYTES / 1024 / 1024)} MB.` },
+      },
+      { status: 400 },
+    );
+  }
+
+  // 4. Atomic combined metadata + PDF update
+  const result = await updateBrochureWithFile(id, {
+    title,
+    description,
+    file: replacement,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { ok: false, message: result.error, errors: { file: result.error } },
+      { status: 400 },
+    );
   }
 
   revalidateBrochures();

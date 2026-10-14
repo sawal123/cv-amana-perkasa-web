@@ -18,10 +18,8 @@ import { MAX_CAPTION } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { MAX_UPLOAD_BYTES, removeMedia, saveUpload, setMediaAlt } from "@/lib/media";
 import {
-  createBrochure,
   deleteBrochure,
   moveBrochure,
-  replaceBrochureFile,
   setBrochurePublished,
   updateBrochure,
 } from "@/lib/brochures";
@@ -393,28 +391,16 @@ function parseBrochureMeta(
   return { ok: true, title: title.data, description: description.data };
 }
 
-export async function createBrochureAction(formData: FormData): Promise<ActionState> {
-  await requireAdmin();
-
-  const meta = parseBrochureMeta(formData);
-  if (!meta.ok) return meta.state;
-
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, errors: { file: "Pilih file PDF terlebih dahulu." } };
-  }
-
-  try {
-    const result = await createBrochure({ title: meta.title, description: meta.description, file });
-    if (!result.ok) return { ok: false, errors: { file: result.error } };
-    revalidateBrochures();
-    return { ok: true, message: "Brosur terunggah." };
-  } catch {
-    return databaseUnavailable();
-  }
-}
-
 export async function updateBrochureAction(id: number, formData: FormData): Promise<ActionState> {
+  const file = formData.get("file");
+  if (file instanceof File && file.size > 0) {
+    return {
+      ok: false,
+      message: "Penggantian file PDF tidak didukung melalui Server Action. Gunakan endpoint upload.",
+      errors: { file: "Penggantian file PDF tidak didukung melalui Server Action." },
+    };
+  }
+
   await requireAdmin();
 
   const parsedId = positiveId.safeParse(id);
@@ -423,16 +409,7 @@ export async function updateBrochureAction(id: number, formData: FormData): Prom
   const meta = parseBrochureMeta(formData);
   if (!meta.ok) return meta.state;
 
-  // The replacement file is optional: saving metadata alone keeps the current
-  // PDF exactly as it is.
-  const file = formData.get("file");
-  const replacement = file instanceof File && file.size > 0 ? file : null;
-
   try {
-    if (replacement) {
-      const replaced = await replaceBrochureFile(parsedId.data, replacement);
-      if (!replaced.ok) return { ok: false, errors: { file: replaced.error } };
-    }
     const updated = await updateBrochure(parsedId.data, { title: meta.title, description: meta.description });
     if (!updated.ok) return { ok: false, message: updated.error };
     revalidateBrochures();

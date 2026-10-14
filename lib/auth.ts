@@ -66,7 +66,13 @@ export async function getSession(request?: Request): Promise<Session | null> {
   if (request) {
     const cookieHeader = request.headers.get("cookie") ?? "";
     const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
-    if (match) token = decodeURIComponent(match[1]);
+    if (match) {
+      try {
+        token = decodeURIComponent(match[1]);
+      } catch {
+        return null;
+      }
+    }
   }
 
   if (!token) {
