@@ -130,5 +130,6 @@
     { "id": 3, "no": "03", "title": "Production", "description": "Menyiapkan seluruh kebutuhan visual, teknis, venue, talent, dan operasional." },
     { "id": 4, "no": "04", "title": "Execution", "description": "Koordinasi onsite, rundown control, technical control, dan problem solving." },
     { "id": 5, "no": "05", "title": "Evaluation", "description": "Serah terima dokumentasi, evaluasi pelaksanaan, serta kebutuhan tindak lanjut." }
-  ]
+  ],
+  "brochure": null
 }

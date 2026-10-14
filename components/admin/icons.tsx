@@ -21,6 +21,7 @@ export type IconName =
   | "route"
   | "inbox"
   | "image"
+  | "fileText"
   | "external"
   | "menu"
   | "close"
@@ -113,6 +114,13 @@ const PATHS: Record<IconName, ReactNode> = {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <circle cx="9" cy="9.5" r="1.8" />
       <path d="m21 16-5-5-8.5 8.5" />
+    </>
+  ),
+  fileText: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h6" />
     </>
   ),
   external: (

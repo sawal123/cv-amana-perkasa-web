@@ -47,6 +47,10 @@ function buildNavGroups(): NavGroup[] {
 
   add("Business", { href: "/admin/quotation-requests", label: "Permintaan Penawaran", icon: "inbox" });
   add("Assets", { href: "/admin/media", label: "Media", icon: "image" });
+  // Dedicated module, deliberately not part of the TABLES registry: brochures
+  // carry binary-upload semantics (PDF validation, file replacement) that the
+  // generic content CRUD does not model.
+  add("Assets", { href: "/admin/brochures", label: "Brosur PDF", icon: "fileText" });
 
   const ordered = NAV_GROUP_ORDER.filter((label) => buckets.has(label));
   const extra = [...buckets.keys()].filter((label) => !NAV_GROUP_ORDER.includes(label));

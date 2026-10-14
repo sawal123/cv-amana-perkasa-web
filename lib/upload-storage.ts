@@ -61,6 +61,20 @@ export function uploadPath(filename: string): string {
   return join(resolveUploadStorageDir(), filename);
 }
 
+/**
+ * PDF brochures live in a dedicated child of the same persistent root, so the
+ * image-only `/uploads` route never sees them and no second storage env var is
+ * needed. Resolved per call for the same reason as the root above.
+ */
+export function resolveBrochureStorageDir(): string {
+  return join(resolveUploadStorageDir(), "brochures");
+}
+
+/** Absolute path of one brochure PDF inside the brochure storage directory. */
+export function brochureStoragePath(filename: string): string {
+  return join(resolveBrochureStorageDir(), filename);
+}
+
 /** True when a persistent directory is configured and usable. */
 export function isUploadStorageConfigured(env: Record<string, string | undefined> = process.env): boolean {
   return isAbsolute((env.UPLOAD_STORAGE_DIR ?? "").trim());

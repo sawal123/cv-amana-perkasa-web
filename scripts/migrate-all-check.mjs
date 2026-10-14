@@ -144,6 +144,8 @@ async function verifySchema(connection, label) {
   check(`${label}: quotation_requests ada`, await hasTable(connection, "quotation_requests"));
   check(`${label}: clients_partners ada`, await hasTable(connection, "clients_partners"));
   check(`${label}: testimonials ada`, await hasTable(connection, "testimonials"));
+  check(`${label}: brochures ada`, await hasTable(connection, "brochures"));
+  check(`${label}: brochures.stored_name ada`, await exists(connection, "brochures", "stored_name"));
   check(`${label}: media.width sudah tidak ada`, !(await exists(connection, "media", "width")));
 }
 
@@ -167,7 +169,7 @@ check("migrate-all.sql tidak memuat hash kredensial (scrypt:)", !migrateAll.incl
 check("migrate-all.sql tidak memuat ADMIN_PASSWORD", !migrateAll.includes("ADMIN_PASSWORD"));
 check("migrate-all.sql tidak memuat INSERT admin", !/INSERT\s+INTO\s+`admin_users`/i.test(migrateAll));
 check("migrate-all.sql tidak memuat INSERT IGNORE konten", !/INSERT\s+IGNORE\s+INTO/i.test(migrateAll));
-check("migrate-all.sql memuat seluruh migrasi 0000..0003", ["0000_", "0001_", "0002_", "0003_"].every((m) => migrateAll.includes(m)));
+check("migrate-all.sql memuat seluruh migrasi 0000..0004", ["0000_", "0001_", "0002_", "0003_", "0004_"].every((m) => migrateAll.includes(m)));
 
 const admin = await adminConnection();
 

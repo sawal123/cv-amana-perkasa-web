@@ -9,6 +9,7 @@
  * by MySQL, and that admin auth accepts real sessions and refuses everything
  * else. Mutates the database, then restores it from a snapshot taken first.
  */
+import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SignJWT } from "jose";
@@ -130,6 +131,97 @@ try {
     "media uji upload dibersihkan",
     (await connection.query("SELECT COUNT(*) AS n FROM media WHERE filename = ?", [`${UP}.png`]))[0][0].n === 0,
   );
+
+  // ---- brochure PDF: landing CTA + public download ---------------------
+  // Rows go straight into MySQL and bytes straight into the storage directory,
+  // mirroring what the admin upload produces. Landing assertions only run on a
+  // clean slate (no pre-existing published brochure), but the download-route
+  // behaviour is asserted regardless.
+  const BR = "E2E-BROCHURE";
+  const PDF_HEADER = Buffer.from("%PDF-1.7\n", "ascii");
+  const brochureDir = join(uploadsDir, "brochures");
+  const uuidA = "22345678-1234-4123-8123-123456789abc";
+  const uuidB = "32345678-1234-4123-8123-123456789abc";
+  const uuidMissing = "42345678-1234-4123-8123-123456789abc";
+  const bytesA = Buffer.concat([PDF_HEADER, Buffer.from(`% ${BR}-A\n`, "ascii"), Buffer.alloc(48, 1)]);
+  const bytesB = Buffer.concat([PDF_HEADER, Buffer.from(`% ${BR}-B\n`, "ascii"), Buffer.alloc(64, 2)]);
+
+  const [publishedBefore] = (await connection.query("SELECT COUNT(*) AS n FROM brochures WHERE published = 1"))[0];
+  const cleanBrochureSlate = publishedBefore.n === 0;
+
+  await mkdir(brochureDir, { recursive: true });
+  await writeFile(join(brochureDir, `${uuidA}.pdf`), bytesA);
+  await writeFile(join(brochureDir, `${uuidB}.pdf`), bytesB);
+  await connection.query(
+    "INSERT INTO brochures (title, description, filename, stored_name, mime, size, position, published) VALUES (?, ?, ?, ?, 'application/pdf', ?, 2, 1), (?, ?, ?, ?, 'application/pdf', ?, 1, 1)",
+    [`${BR}-A`, "Deskripsi A", `${BR}-A.pdf`, `${uuidA}.pdf`, bytesA.length, `${BR}-B`, "Deskripsi B", `${BR}-B.pdf`, `${uuidB}.pdf`, bytesB.length],
+  );
+  const [brochureA] = (await connection.query("SELECT id FROM brochures WHERE title = ?", [`${BR}-A`]))[0];
+  const [brochureB] = (await connection.query("SELECT id FROM brochures WHERE title = ?", [`${BR}-B`]))[0];
+  const idA = brochureA.id;
+  const idB = brochureB.id;
+
+  const downloadB = await fetch(`${origin}/brochures/${idB}/download`);
+  const downloadBBytes = downloadB.status === 200 ? Buffer.from(await downloadB.arrayBuffer()) : Buffer.alloc(0);
+  check("GET /brochures/{id}/download -> 200", downloadB.status === 200, `status=${downloadB.status}`);
+  check("download Content-Type application/pdf", downloadB.headers.get("content-type") === "application/pdf");
+  const dispositionB = downloadB.headers.get("content-disposition") ?? "";
+  check("download Content-Disposition attachment", dispositionB.startsWith("attachment;"), dispositionB);
+  check("download memakai filename asli", dispositionB.includes(`${BR}-B.pdf`), dispositionB);
+  check("download nosniff", downloadB.headers.get("x-content-type-options") === "nosniff");
+  check("download no-store", (downloadB.headers.get("cache-control") ?? "").includes("no-store"));
+  check("download body dimulai %PDF-", downloadBBytes.subarray(0, 5).toString("ascii") === "%PDF-");
+  check("download body utuh (byte-for-byte)", downloadBBytes.equals(bytesB), `bytes=${downloadBBytes.length}`);
+
+  await connection.query("UPDATE brochures SET published = 0 WHERE id = ?", [idB]);
+  check("brosur unpublished -> 404", (await fetch(`${origin}/brochures/${idB}/download`)).status === 404);
+  await connection.query("UPDATE brochures SET published = 1 WHERE id = ?", [idB]);
+  check("brosur republished -> 200 lagi", (await fetch(`${origin}/brochures/${idB}/download`)).status === 200);
+
+  check("id tidak dikenal -> 404", (await fetch(`${origin}/brochures/999999/download`)).status === 404);
+  check("id bukan angka -> 404", (await fetch(`${origin}/brochures/abc/download`)).status === 404);
+  check("id negatif -> 404", (await fetch(`${origin}/brochures/-1/download`)).status === 404);
+  check("id nol -> 404", (await fetch(`${origin}/brochures/0/download`)).status === 404);
+  const traversalRes = await fetch(`${origin}/brochures/1..%2F..%2Fadmin/download`);
+  check("path traversal -> 404/400", traversalRes.status === 404 || traversalRes.status === 400, `status=${traversalRes.status}`);
+
+  // A published row whose physical file is gone must 404, not 500.
+  await connection.query(
+    "INSERT INTO brochures (title, description, filename, stored_name, mime, size, position, published) VALUES (?, '', ?, ?, 'application/pdf', 0, 99, 1)",
+    [`${BR}-MISSING`, `${BR}-MISSING.pdf`, `${uuidMissing}.pdf`],
+  );
+  const [brochureMissing] = (await connection.query("SELECT id FROM brochures WHERE title = ?", [`${BR}-MISSING`]))[0];
+  check(
+    "file fisik hilang -> 404",
+    (await fetch(`${origin}/brochures/${brochureMissing.id}/download`)).status === 404,
+  );
+  await connection.query("DELETE FROM brochures WHERE id = ?", [brochureMissing.id]);
+
+  if (cleanBrochureSlate) {
+    // B has position 1, A position 2 — both published, so B is the active one.
+    const ctaHtml = await (await fetch(`${origin}/`)).text();
+    const ctaCount = ctaHtml.split("Download Brosur").length - 1;
+    check("CTA Download Brosur tampil tepat sekali", ctaCount === 1, `count=${ctaCount}`);
+    check("CTA menunjuk ke brosur pertama (B)", ctaHtml.includes(`href="/brochures/${idB}/download"`));
+    check("CTA punya aria-label dengan judul brosur", ctaHtml.includes(`aria-label="Download ${BR}-B"`));
+
+    await connection.query("UPDATE brochures SET published = 0 WHERE id = ?", [idB]);
+    const fallbackHtml = await (await fetch(`${origin}/`)).text();
+    check("unpublish B -> CTA otomatis pindah ke A", fallbackHtml.includes(`href="/brochures/${idA}/download"`));
+    await connection.query("UPDATE brochures SET published = 1 WHERE id = ?", [idB]);
+
+    await connection.query("DELETE FROM brochures WHERE title LIKE ?", [`${BR}%`]);
+    const emptyHtml = await (await fetch(`${origin}/`)).text();
+    check("tanpa brosur tayang -> CTA hilang", !emptyHtml.includes("Download Brosur"));
+  } else {
+    console.log("  SKIP  landing-CTA assertions (sudah ada brosur tayang lain di database ini)");
+    await connection.query("DELETE FROM brochures WHERE title LIKE ?", [`${BR}%`]);
+  }
+
+  await unlink(join(brochureDir, `${uuidA}.pdf`)).catch(() => undefined);
+  await unlink(join(brochureDir, `${uuidB}.pdf`)).catch(() => undefined);
+  const brochureLeft = (await connection.query("SELECT COUNT(*) AS n FROM brochures WHERE title LIKE ?", [`${BR}%`]))[0][0].n;
+  check("baris uji brosur dibersihkan", brochureLeft === 0);
 
   // ---- project gallery, metadata and legalities reach the public page ----
   // site-shell is a client component, so its content props are serialised into the
@@ -280,7 +372,7 @@ try {
     return { status: res.status, location: res.headers.get("location") ?? "", body };
   };
 
-  for (const path of ["/admin", "/admin/settings/identity", "/admin/content/projects", "/admin/media"]) {
+  for (const path of ["/admin", "/admin/settings/identity", "/admin/content/projects", "/admin/media", "/admin/brochures"]) {
     const anon = await grab(path);
     check(
       `${path} anonymous -> 307 to login`,
@@ -303,6 +395,138 @@ try {
   const projectsPage = await grab("/admin/content/projects", validToken);
   check("admin project list shows seeded rows", projectsPage.body.includes("Corporate Conference"));
   check("admin media page renders", (await grab("/admin/media", validToken)).body.includes("Pustaka gambar"));
+
+  const brochuresPage = await grab("/admin/brochures", validToken);
+  check("admin brochure list renders", brochuresPage.body.includes("Brosur PDF"));
+  check("admin sidebar carries the Brosur PDF item", brochuresPage.body.includes("/admin/brochures"));
+  check("admin brochure create page renders", (await grab("/admin/brochures/new", validToken)).body.includes("Tambah brosur"));
+  check("admin brochure edit untuk id tak dikenal -> 404", (await grab("/admin/brochures/999999/edit", validToken)).status === 404);
+
+  // ---- brochure PDF upload route handler E2E tests ---------------------
+  // 1. unauthenticated PDF upload rejected
+  const unauthUploadRes = await fetch(`${origin}/api/admin/brochures`, { method: "POST" });
+  check("unauthenticated PDF upload rejected", unauthUploadRes.status === 401, `status=${unauthUploadRes.status}`);
+
+  // 2. valid authenticated <=15MB PDF accepted
+  const validBrochureFd = new FormData();
+  validBrochureFd.set("title", "E2E ROUTE BROCHURE");
+  validBrochureFd.set("description", "Uploaded in E2E test");
+  const validPdfBytes = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(1024)]);
+  validBrochureFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "e2e-brochure.pdf");
+
+  const authUploadRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: validBrochureFd,
+  });
+  check("valid authenticated <=15MB PDF accepted", authUploadRes.status === 201, `status=${authUploadRes.status}`);
+
+  const [e2eBrochureRow] = (await connection.query("SELECT * FROM brochures WHERE title = ?", ["E2E ROUTE BROCHURE"]))[0];
+  check("brosur E2E tersimpan di database", !!e2eBrochureRow);
+
+  // 3. oversized PDF rejected
+  const oversizedFd = new FormData();
+  oversizedFd.set("title", "E2E OVERSIZED");
+  oversizedFd.set("description", "Should fail");
+  const hugeBytes = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(15 * 1024 * 1024 + 1024)]);
+  oversizedFd.set("file", new Blob([hugeBytes], { type: "application/pdf" }), "huge.pdf");
+
+  const oversizedRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: oversizedFd,
+  });
+  check("oversized PDF rejected", oversizedRes.status === 400, `status=${oversizedRes.status}`);
+
+  // 4. replacement still transactional
+  if (e2eBrochureRow) {
+    const badReplaceFd = new FormData();
+    badReplaceFd.set("file", new Blob([Buffer.from("not a real pdf")], { type: "application/pdf" }), "fake.pdf");
+    const badReplaceRes = await fetch(`${origin}/api/admin/brochures/${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: badReplaceFd,
+    });
+    check("replacement dengan non-PDF ditolak", badReplaceRes.status === 400);
+
+    const [afterBadRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check(
+      "replacement still transactional",
+      afterBadRow?.stored_name === e2eBrochureRow.stored_name && existsSync(join(uploadsDir, "brochures", afterBadRow.stored_name)),
+    );
+
+    // valid replacement + invalid title => old PDF and DB remain unchanged
+    const invalidTitleFd = new FormData();
+    invalidTitleFd.set("title", "   ");
+    invalidTitleFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "valid.pdf");
+    const invalidTitleRes = await fetch(`${origin}/api/admin/brochures/${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: invalidTitleFd,
+    });
+    check("valid replacement + invalid title -> 400", invalidTitleRes.status === 400);
+
+    const [afterInvalidRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check(
+      "valid replacement + invalid title => old PDF and DB remain unchanged",
+      afterInvalidRow?.title === e2eBrochureRow.title &&
+        afterInvalidRow?.stored_name === e2eBrochureRow.stored_name &&
+        existsSync(join(uploadsDir, "brochures", e2eBrochureRow.stored_name)),
+    );
+
+    // POST /api/admin/brochures?id=... does not act as update endpoint
+    const badCreateFd = new FormData();
+    badCreateFd.set("title", "ATTEMPTED_UPDATE_VIA_CREATE");
+    badCreateFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "test.pdf");
+    const badCreateRes = await fetch(`${origin}/api/admin/brochures?id=${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: badCreateFd,
+    });
+    check("POST /api/admin/brochures?id=... does not act as update endpoint", badCreateRes.status === 400);
+    const [afterBadCreateRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check("POST /api/admin/brochures?id=... did not modify brochure", afterBadCreateRow?.title === e2eBrochureRow.title);
+  }
+
+  // malformed session cookie => 401, never 500
+  const malformedCookieRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: "amana_admin=%E0%A4%A" },
+  });
+  check("malformed session cookie => 401, never 500", malformedCookieRes.status === 401, `status=${malformedCookieRes.status}`);
+
+  // 5. hostile/non-pdf extension downloads with .pdf filename
+  const hostileUploadFd = new FormData();
+  hostileUploadFd.set("title", "E2E HOSTILE BROCHURE");
+  hostileUploadFd.set("description", "Uploaded as company.exe");
+  hostileUploadFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "company.exe");
+
+  const hostileUploadRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: hostileUploadFd,
+  });
+  check("hostile upload company.exe diterima", hostileUploadRes.status === 201);
+
+  const [hostileBrochureRow] = (await connection.query("SELECT * FROM brochures WHERE title = ?", ["E2E HOSTILE BROCHURE"]))[0];
+  check("hostile filename dinormalkan ke .pdf di DB", hostileBrochureRow?.filename === "company.pdf");
+
+  if (hostileBrochureRow) {
+    const downloadRes = await fetch(`${origin}/brochures/${hostileBrochureRow.id}/download`);
+    const cdHeader = downloadRes.headers.get("content-disposition") ?? "";
+    check(
+      "hostile/non-pdf extension downloads with .pdf filename",
+      cdHeader.includes('filename="company.pdf"') && !cdHeader.includes(".exe"),
+      cdHeader,
+    );
+    await unlink(join(uploadsDir, "brochures", hostileBrochureRow.stored_name)).catch(() => undefined);
+    await connection.query("DELETE FROM brochures WHERE id = ?", [hostileBrochureRow.id]);
+  }
+
+  if (e2eBrochureRow) {
+    await unlink(join(uploadsDir, "brochures", e2eBrochureRow.stored_name)).catch(() => undefined);
+    await connection.query("DELETE FROM brochures WHERE id = ?", [e2eBrochureRow.id]);
+  }
 
   // ---- why choose us ---------------------------------------------------
   const WHY = "E2E-WHY";

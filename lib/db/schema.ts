@@ -199,6 +199,35 @@ export const media = mysqlTable("media", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+/**
+ * Company-profile PDF brochures. Metadata only — the bytes live on the
+ * persistent filesystem under `<UPLOAD_STORAGE_DIR>/brochures`, never in MySQL
+ * and never in the image-only `media` table. `stored_name` is a server-generated
+ * UUID filename; `filename` is the original upload name, kept for the download
+ * label and never used to build a filesystem path.
+ *
+ * The landing CTA serves the first row matching published=1 ordered by
+ * position, id — the admin controls which brochure is active through publish
+ * state and ordering alone, so no separate "primary" flag is needed.
+ * No rows are ever seeded: the public download button stays hidden until a real
+ * document is uploaded.
+ */
+export const brochures = mysqlTable("brochures", {
+  id: int("id", { unsigned: true }).autoincrement().primaryKey(),
+  title: varchar("title", { length: 150 }).notNull(),
+  description: varchar("description", { length: 500 }).notNull().default(""),
+  /** Original upload name, e.g. CV-AMANA-PERKASA-2026.pdf — display label only. */
+  filename: varchar("filename", { length: 255 }).notNull(),
+  /** Server-generated safe name, e.g. 5a30c8d8-...-39b175527e91.pdf. */
+  storedName: varchar("stored_name", { length: 100 }).notNull(),
+  mime: varchar("mime", { length: 80 }).notNull().default("application/pdf"),
+  size: int("size", { unsigned: true }).notNull().default(0),
+  position: int("position", { unsigned: true }).notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().onUpdateNow(),
+});
+
 export const adminUsers = mysqlTable("admin_users", {
   id: int("id", { unsigned: true }).autoincrement().primaryKey(),
   username: varchar("username", { length: 80 }).notNull(),
@@ -218,4 +247,5 @@ export type ClientPartnerRow = typeof clientsPartners.$inferSelect;
 export type TestimonialRow = typeof testimonials.$inferSelect;
 export type QuotationRequestRow = typeof quotationRequests.$inferSelect;
 export type MediaRow = typeof media.$inferSelect;
+export type BrochureRow = typeof brochures.$inferSelect;
 export type AdminUserRow = typeof adminUsers.$inferSelect;

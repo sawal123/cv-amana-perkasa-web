@@ -7,7 +7,7 @@
  *
  * Needs DATABASE_URL. Creates its own rows and files and removes them again.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,13 @@ import { defaultContent } from "@/data/site";
 import { adminUsers, quotationRequests, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+// @ts-expect-error next.config.mjs does not have TypeScript declaration
+import nextConfig from "../next.config.mjs";
+import { SignJWT } from "jose";
+import * as adminActions from "@/app/admin/actions";
+import { POST as uploadBrochureRoute } from "@/app/api/admin/brochures/route";
+import { POST as updateBrochureRoute } from "@/app/api/admin/brochures/[id]/route";
+import { GET as downloadBrochureRoute } from "@/app/brochures/[id]/download/route";
 import {
   addGalleryImage,
   deleteGalleryImage,
@@ -26,7 +33,30 @@ import {
 import * as store from "@/lib/admin/store";
 import { loadContent } from "@/lib/content";
 import { MAX_UPLOAD_BYTES, listMedia, mediaUsage, removeMedia, saveUpload, uploadDir } from "@/lib/media";
-import { isUploadStorageConfigured, resolveUploadStorageDir, uploadPath } from "@/lib/upload-storage";
+import {
+  MAX_BROCHURE_BYTES,
+  brochureContentDisposition,
+  createBrochure,
+  deleteBrochure,
+  getBrochureById,
+  getPublishedBrochure,
+  listBrochures,
+  loadLandingBrochure,
+  moveBrochure,
+  readBrochureFile,
+  replaceBrochureFile,
+  resolveBrochureFilePath,
+  sanitizeOriginalFilename,
+  setBrochurePublished,
+  updateBrochureWithFile,
+} from "@/lib/brochures";
+import {
+  brochureStoragePath,
+  isUploadStorageConfigured,
+  resolveBrochureStorageDir,
+  resolveUploadStorageDir,
+  uploadPath,
+} from "@/lib/upload-storage";
 import { TABLES, type Payload } from "@/lib/admin/fields";
 import { SETTINGS_SCHEMA_BY_GROUP } from "@/lib/admin/settings-fields";
 import {
@@ -991,6 +1021,404 @@ async function main() {
   } finally {
     if (originalUploadDir === undefined) delete process.env.UPLOAD_STORAGE_DIR;
     else process.env.UPLOAD_STORAGE_DIR = originalUploadDir;
+  }
+
+  // ------------------------------------------------------------------ brochures
+  // PDF brochure CMS: signature-based validation, persistent storage under
+  // <UPLOAD_STORAGE_DIR>/brochures, and the published+order rule that decides
+  // which document the landing CTA serves. No brochure is ever seeded.
+  const PDF_HEADER = Buffer.from("%PDF-1.7\n", "ascii");
+  const fakePdf = (name: string, extra = 32, type = "application/pdf") =>
+    fakeFile(name, Buffer.concat([PDF_HEADER, Buffer.alloc(extra)]), type);
+
+  check("fallback site.json brochure = null", defaultContent.brochure === null);
+  check("brochures tidak ter-seed (tanpa brosur fiktif)", (await listBrochures()).length === 0);
+
+  // Validation is byte-based: name, extension and file.type are all untrusted.
+  check("PDF valid diterima", (await readBrochureFile(fakePdf("ok.pdf"))).ok);
+  check(
+    "PDF valid dengan file.type salah tetap diterima",
+    (await readBrochureFile(fakePdf("real.pdf", 16, "image/png"))).ok,
+  );
+  check("PNG berganti nama .pdf ditolak", !(await readBrochureFile(fakeFile("fake.pdf", Buffer.concat([PNG_HEADER, Buffer.alloc(32)]), "application/pdf"))).ok);
+  check(
+    "HTML berganti nama .pdf ditolak",
+    !(await readBrochureFile(fakeFile("page.pdf", Buffer.from("<html><body>bukan pdf</body></html>"), "application/pdf"))).ok,
+  );
+  check(
+    "PHP berganti nama .pdf ditolak",
+    !(await readBrochureFile(fakeFile("shell.pdf", Buffer.from("<?php system($_GET[0]); ?>"), "application/pdf"))).ok,
+  );
+  check(
+    "EXE berganti nama .pdf ditolak",
+    !(await readBrochureFile(fakeFile("app.pdf", Buffer.concat([Buffer.from("MZ"), Buffer.alloc(126)]), "application/pdf"))).ok,
+  );
+  check("file kosong ditolak", !(await readBrochureFile(fakeFile("empty.pdf", Buffer.alloc(0), "application/pdf"))).ok);
+  check(
+    "PDF melebihi 15 MB ditolak",
+    !(await readBrochureFile(fakeFile("huge.pdf", Buffer.concat([PDF_HEADER, Buffer.alloc(MAX_BROCHURE_BYTES)]), "application/pdf"))).ok,
+  );
+  check("MAX_BROCHURE_BYTES = 15 MB", MAX_BROCHURE_BYTES === 15 * 1024 * 1024);
+
+  // Stored-name resolution: only server-generated UUID names map to a path.
+  check(
+    "resolveBrochureFilePath menolak nama non-UUID",
+    resolveBrochureFilePath("../../secret.pdf") === null && resolveBrochureFilePath("CV-AMANA-2026.pdf") === null,
+  );
+  check(
+    "resolveBrochureFilePath menerima uuid.pdf",
+    resolveBrochureFilePath("018795c9-88a2-4d62-96bb-e73879558928.pdf") !== null,
+  );
+
+  // Filename & header safety.
+  check(
+    "global Server Actions limit remains 4mb",
+    nextConfig.experimental?.serverActions?.bodySizeLimit === "4mb",
+    `bodySizeLimit=${nextConfig.experimental?.serverActions?.bodySizeLimit}`,
+  );
+  check("sanitizeOriginalFilename membuang path traversal", sanitizeOriginalFilename("../../etc/passwd") === "passwd.pdf");
+  check("sanitizeOriginalFilename membuang backslash path", sanitizeOriginalFilename("..\\..\\windows\\x.pdf") === "x.pdf");
+  check("sanitizeOriginalFilename menormalkan ekstensi non-pdf .exe -> .pdf", sanitizeOriginalFilename("company.exe") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan ekstensi non-pdf .php -> .pdf", sanitizeOriginalFilename("shell.php") === "shell.pdf");
+  check("sanitizeOriginalFilename menormalkan tanpa ekstensi -> .pdf", sanitizeOriginalFilename("company") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan ganda .pdf.exe -> .pdf", sanitizeOriginalFilename("company.pdf.exe") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan uppercase .PDF -> .pdf", sanitizeOriginalFilename("company.PDF") === "company.pdf");
+  const hostileDisposition = brochureContentDisposition('evil"\\\r\nSet-Cookie: x.pdf');
+  check(
+    "Content-Disposition tidak bisa disuntik header/quote",
+    hostileDisposition.startsWith("attachment; filename=\"") &&
+      hostileDisposition.split('"').length === 3 &&
+      !hostileDisposition.includes("\r") &&
+      !hostileDisposition.includes("\n"),
+    hostileDisposition,
+  );
+  const utf8Disposition = brochureContentDisposition("Brosur AMANA — 2026.pdf");
+  check(
+    "Content-Disposition membawa filename ASCII + filename* UTF-8",
+    utf8Disposition.includes("filename=\"Brosur AMANA _ 2026.pdf\"") &&
+      utf8Disposition.includes("filename*=UTF-8''") &&
+      utf8Disposition.includes("%E2%80%94"),
+    utf8Disposition,
+  );
+
+  // Storage + full lifecycle under a temporary UPLOAD_STORAGE_DIR.
+  const originalBrochureUploadDir = process.env.UPLOAD_STORAGE_DIR;
+  try {
+    const tempDir = await mkdtemp(join(tmpdir(), "amana-brochures-"));
+    process.env.UPLOAD_STORAGE_DIR = tempDir;
+    check(
+      "resolveBrochureStorageDir = <UPLOAD_STORAGE_DIR>/brochures",
+      resolveBrochureStorageDir() === join(tempDir, "brochures"),
+    );
+    check("brochureStoragePath menggabungkan ke direktori brosur", brochureStoragePath("x.pdf") === join(tempDir, "brochures", "x.pdf"));
+
+    const created = await createBrochure({
+      title: "TEST BROCHURE A",
+      description: "Dibuat oleh integration check.",
+      file: fakePdf("CV-AMANA-PERKASA-2026.pdf"),
+    });
+    check("createBrochure diterima", created.ok, created.ok ? "" : created.error);
+
+    const items = await listBrochures();
+    const itemA = items.find((row) => row.title === "TEST BROCHURE A");
+    check("brosur terdaftar di listBrochures", !!itemA);
+    check("brosur baru tayang secara default", itemA?.published === true);
+
+    const rowA = itemA ? await getBrochureById(itemA.id) : null;
+    check("stored_name berupa uuid.pdf", !!rowA && /^[a-f0-9-]{36}\.pdf$/.test(rowA.storedName));
+    const pathA = rowA ? join(tempDir, "brochures", rowA.storedName) : "";
+    check("PDF ditulis ke <temp>/brochures/<uuid>.pdf", !!rowA && existsSync(pathA));
+    check(
+      "PDF TIDAK ditulis ke public/uploads",
+      !!rowA && !existsSync(join(process.cwd(), "public", "uploads", "brochures", rowA.storedName)),
+    );
+    check("filename asli disimpan sebagai metadata", rowA?.filename === "CV-AMANA-PERKASA-2026.pdf");
+    check("mime application/pdf", rowA?.mime === "application/pdf");
+    check("size tercatat dari buffer", !!rowA && rowA.size > 5);
+    check("create tanpa PDF ditolak", !(await createBrochure({ title: "X", description: "", file: fakeFile("x.pdf", Buffer.from("bukan pdf"), "application/pdf") })).ok);
+
+    // Active-brochure rule: published, ordered by position then id.
+    await createBrochure({ title: "TEST BROCHURE B", description: "", file: fakePdf("B.pdf") });
+    const itemB = (await listBrochures()).find((row) => row.title === "TEST BROCHURE B");
+    check("brosur kedua dibuat dengan posisi setelahnya", !!itemB && itemB.position > (itemA?.position ?? 0));
+    check("brosur pertama tayang = brosur aktif", (await getPublishedBrochure())?.title === "TEST BROCHURE A");
+
+    const landingA = await loadLandingBrochure();
+    check(
+      "loadLandingBrochure memproyeksikan id/title/description",
+      landingA?.id === itemA?.id && landingA?.title === "TEST BROCHURE A" && landingA?.description === "Dibuat oleh integration check.",
+    );
+    check(
+      "proyeksi publik tidak membocorkan stored_name/path",
+      !!landingA && Object.keys(landingA).sort().join(",") === "description,id,title",
+      landingA ? Object.keys(landingA).join(",") : "",
+    );
+    check("loadContent membawa brosur aktif", (await loadContent()).brochure?.id === itemA?.id);
+
+    if (itemB && itemA) {
+      await moveBrochure(itemB.id, -1);
+      check("moveBrochure menukar urutan", (await listBrochures())[0].title === "TEST BROCHURE B");
+      check("posisi tetap rapat 1..n", (await listBrochures()).every((row, index) => row.position === index + 1));
+      check("brosur aktif mengikuti urutan", (await getPublishedBrochure())?.title === "TEST BROCHURE B");
+
+      await setBrochurePublished(itemB.id, false);
+      check("unpublish B menggeser aktif ke A", (await getPublishedBrochure())?.title === "TEST BROCHURE A");
+      check("brosur disembunyikan hilang dari landing", (await loadContent()).brochure?.id === itemA.id);
+
+      await setBrochurePublished(itemB.id, true);
+      await moveBrochure(itemB.id, 1);
+      check("moveBrochure mengembalikan urutan", (await listBrochures())[0].title === "TEST BROCHURE A");
+
+      // Replacement: validate → write new → repoint DB → delete old.
+      const replacedBytes = Buffer.concat([PDF_HEADER, Buffer.from("% replaced\n"), Buffer.alloc(48)]);
+      const replaced = await replaceBrochureFile(itemA.id, fakeFile("CV-AMANA-PERKASA-2026-v2.pdf", replacedBytes, "application/pdf"));
+      check("replaceBrochureFile diterima", replaced.ok, replaced.ok ? "" : replaced.error);
+      const afterReplace = await getBrochureById(itemA.id);
+      check("DB menunjuk stored_name baru", !!afterReplace && afterReplace.storedName !== rowA?.storedName);
+      check("file baru ada di disk", !!afterReplace && existsSync(join(tempDir, "brochures", afterReplace.storedName)));
+      check("file lama dihapus setelah DB berpindah", !existsSync(pathA));
+      check("metadata filename ikut terganti", afterReplace?.filename === "CV-AMANA-PERKASA-2026-v2.pdf");
+      check("size mengikuti file baru", afterReplace?.size === replacedBytes.length);
+
+      const badReplace = await replaceBrochureFile(itemA.id, fakeFile("x.pdf", Buffer.from("masih bukan pdf"), "application/pdf"));
+      check("ganti file dengan non-PDF ditolak", !badReplace.ok);
+      const afterBad = await getBrochureById(itemA.id);
+      check(
+        "penolakan tidak mengubah pasangan DB/file",
+        afterBad?.storedName === afterReplace?.storedName &&
+          !!afterBad &&
+          existsSync(join(tempDir, "brochures", afterBad.storedName)),
+      );
+      check(
+        "replacement still transactional",
+        Boolean(
+          afterBad &&
+            afterReplace &&
+            afterBad.storedName === afterReplace.storedName &&
+            existsSync(join(tempDir, "brochures", afterBad.storedName)),
+        ),
+      );
+      check("ganti file untuk id tak dikenal ditolak", !(await replaceBrochureFile(999_999, fakePdf("x.pdf"))).ok);
+
+      // Route Handler transfer tests:
+      const adminToken = await new SignJWT({ username: "admin" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject("1")
+        .setIssuer("amana-perkasa-admin")
+        .setIssuedAt()
+        .setExpirationTime("1d")
+        .sign(new TextEncoder().encode(process.env.AUTH_SECRET!));
+
+      // 1. Unauthenticated PDF upload rejected
+      const unauthReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+      });
+      const unauthRes = await uploadBrochureRoute(unauthReq);
+      check("unauthenticated PDF upload rejected", unauthRes.status === 401);
+
+      // 2. Valid authenticated <=15MB PDF accepted
+      const validFd = new FormData();
+      validFd.set("title", "TEST ROUTE BROCHURE");
+      validFd.set("description", "Uploaded via route handler");
+      validFd.set("file", fakePdf("valid-sample.pdf", 1024));
+
+      const authReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: validFd,
+      });
+      const authRes = await uploadBrochureRoute(authReq);
+      check("valid authenticated <=15MB PDF accepted", authRes.status === 201);
+      const routeItem = (await listBrochures()).find((row) => row.title === "TEST ROUTE BROCHURE");
+      check("brosur dari route handler masuk database", !!routeItem);
+
+      // 3. Oversized PDF rejected
+      const oversizedFd = new FormData();
+      oversizedFd.set("title", "TEST OVERSIZED");
+      oversizedFd.set("description", "Should be rejected");
+      oversizedFd.set("file", fakeFile("huge.pdf", Buffer.concat([PDF_HEADER, Buffer.alloc(MAX_BROCHURE_BYTES + 1024)]), "application/pdf"));
+
+      const oversizedReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: oversizedFd,
+      });
+      const oversizedRes = await uploadBrochureRoute(oversizedReq);
+      check("oversized PDF rejected", oversizedRes.status === 400);
+
+      // 4. Hostile/non-pdf extension downloads with .pdf filename
+      const hostileFd = new FormData();
+      hostileFd.set("title", "HOSTILE EXTENSION TEST");
+      hostileFd.set("description", "Uploaded as company.exe");
+      hostileFd.set("file", fakePdf("company.exe", 128));
+
+      const hostileReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: hostileFd,
+      });
+      const hostileRes = await uploadBrochureRoute(hostileReq);
+      check("upload file PDF dengan nama company.exe diterima", hostileRes.status === 201);
+      const hostileItem = (await listBrochures()).find((row) => row.title === "HOSTILE EXTENSION TEST");
+      check("nama berkas di DB dinormalkan berakhiran .pdf", hostileItem?.filename === "company.pdf");
+
+      if (hostileItem) {
+        const downloadRes = await downloadBrochureRoute(
+          new Request(`http://localhost:3000/brochures/${hostileItem.id}/download`),
+          { params: Promise.resolve({ id: String(hostileItem.id) }) },
+        );
+        const cd = downloadRes.headers.get("content-disposition") ?? "";
+        check(
+          "hostile/non-pdf extension downloads with .pdf filename",
+          cd.includes('filename="company.pdf"') && !cd.includes(".exe"),
+          cd,
+        );
+        await deleteBrochure(hostileItem.id);
+      }
+
+      if (routeItem) {
+        await deleteBrochure(routeItem.id);
+      }
+
+      // ------------------------------------------------------------- PR #10 regression tests
+      // 1. valid replacement + invalid title => old PDF and DB remain unchanged
+      const rowABeforeInvalid = await getBrochureById(itemA.id);
+      const invalidTitleFd = new FormData();
+      invalidTitleFd.set("title", "   ");
+      invalidTitleFd.set("file", fakePdf("should-not-replace.pdf", 512));
+
+      const invalidTitleReq = new Request(`http://localhost:3000/api/admin/brochures/${itemA.id}`, {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: invalidTitleFd,
+      });
+      const invalidTitleRes = await updateBrochureRoute(invalidTitleReq, {
+        params: Promise.resolve({ id: String(itemA.id) }),
+      });
+      check("valid replacement + invalid title => 400", invalidTitleRes.status === 400);
+
+      const rowAAfterInvalid = await getBrochureById(itemA.id);
+      check(
+        "valid replacement + invalid title => old PDF and DB remain unchanged",
+        Boolean(
+          rowAAfterInvalid &&
+            rowABeforeInvalid &&
+            rowAAfterInvalid.title === rowABeforeInvalid.title &&
+            rowAAfterInvalid.storedName === rowABeforeInvalid.storedName &&
+            existsSync(join(tempDir, "brochures", rowABeforeInvalid.storedName)),
+        ),
+      );
+
+      // 2. simulated DB failure during combined replacement => old PDF/metadata remain and new temporary PDF is removed
+      const beforeSimFiles = readdirSync(join(tempDir, "brochures"));
+      const failingDb = {
+        select: getDb().select.bind(getDb()),
+        update: () => ({
+          set: () => ({
+            where: async () => {
+              throw new Error("Simulated DB connection failure during combined replacement");
+            },
+          }),
+        }),
+      };
+
+      let simDbErrorThrown = false;
+      try {
+        await updateBrochureWithFile(
+          itemA.id,
+          {
+            title: "TITLE SHOULD NOT PERSIST",
+            file: fakePdf("temp-sim-failure.pdf", 512),
+          },
+          failingDb,
+        );
+      } catch {
+        simDbErrorThrown = true;
+      }
+      check("simulated DB failure throws error", simDbErrorThrown);
+
+      const afterSimRow = await getBrochureById(itemA.id);
+      const afterSimFiles = readdirSync(join(tempDir, "brochures"));
+      check(
+        "simulated DB failure during combined replacement => old PDF/metadata remain and new temporary PDF is removed",
+        Boolean(
+          afterSimRow &&
+            rowABeforeInvalid &&
+            afterSimRow.title === rowABeforeInvalid.title &&
+            afterSimRow.storedName === rowABeforeInvalid.storedName &&
+            existsSync(join(tempDir, "brochures", rowABeforeInvalid.storedName)) &&
+            afterSimFiles.length === beforeSimFiles.length &&
+            !afterSimFiles.some((f) => !beforeSimFiles.includes(f)),
+        ),
+      );
+
+      // 3. createBrochureAction no longer exists
+      check("createBrochureAction no longer exists", ("createBrochureAction" in adminActions) === false);
+
+      // 4. updateBrochureAction cannot accept/replace a PDF
+      const updateActionPdfFd = new FormData();
+      updateActionPdfFd.set("title", "Attempted PDF via Action");
+      updateActionPdfFd.set("file", fakePdf("action-pdf.pdf", 256));
+      const updateActionPdfRes = await adminActions.updateBrochureAction(itemA.id, updateActionPdfFd);
+      check(
+        "updateBrochureAction cannot accept/replace a PDF",
+        updateActionPdfRes.ok === false && !!updateActionPdfRes.errors?.file,
+      );
+      const rowAfterAction = await getBrochureById(itemA.id);
+      check(
+        "updateBrochureAction tidak mengganti stored_name brosur",
+        rowAfterAction?.storedName === rowABeforeInvalid?.storedName,
+      );
+
+      // 5. POST /api/admin/brochures?id=... does not act as update endpoint
+      const updateViaCreateFd = new FormData();
+      updateViaCreateFd.set("title", "ATTEMPTED UPDATE VIA CREATE");
+      updateViaCreateFd.set("file", fakePdf("attempt.pdf", 256));
+      const badCreateReq = new Request(`http://localhost:3000/api/admin/brochures?id=${itemA.id}`, {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: updateViaCreateFd,
+      });
+      const badCreateRes = await uploadBrochureRoute(badCreateReq);
+      check("POST /api/admin/brochures?id=... does not act as update endpoint", badCreateRes.status === 400);
+      const rowAfterBadCreate = await getBrochureById(itemA.id);
+      check(
+        "POST /api/admin/brochures?id=... did not modify brochure",
+        rowAfterBadCreate?.title === rowABeforeInvalid?.title,
+      );
+
+      // 6. malformed session cookie => 401, never 500
+      const malformedCookieReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: "amana_admin=%E0%A4%A" },
+      });
+      const malformedCookieRes = await uploadBrochureRoute(malformedCookieReq);
+      check("malformed session cookie => 401, never 500", malformedCookieRes.status === 401);
+
+      // Delete: DB first, then the physical file; a missing file is not a failure.
+      const rowB = await getBrochureById(itemB.id);
+      const pathB = rowB ? join(tempDir, "brochures", rowB.storedName) : "";
+      const deletedB = await deleteBrochure(itemB.id);
+      check("deleteBrochure diterima", deletedB.ok, deletedB.ok ? "" : deletedB.error);
+      check("baris brosur terhapus", (await getBrochureById(itemB.id)) === null);
+      check("file PDF fisik terhapus", !existsSync(pathB));
+
+      if (afterReplace) await unlink(join(tempDir, "brochures", afterReplace.storedName)).catch(() => undefined);
+      const deletedA = await deleteBrochure(itemA.id);
+      check("delete tetap sukses saat file fisik sudah hilang", deletedA.ok);
+    }
+
+    check("delete id tak dikenal ditolak", !(await deleteBrochure(999_999)).ok);
+    check("move id tak dikenal ditolak", !(await moveBrochure(999_999, -1)).ok);
+    check("tidak ada brosur tersisa", (await listBrochures()).length === 0);
+    check("tanpa brosur tayang, getPublishedBrochure null", (await getPublishedBrochure()) === null);
+    check("tanpa brosur tayang, loadLandingBrochure null", (await loadLandingBrochure()) === null);
+    check("tanpa brosur tayang, loadContent.brochure null", (await loadContent()).brochure === null);
+
+    await rm(tempDir, { recursive: true, force: true });
+  } finally {
+    if (originalBrochureUploadDir === undefined) delete process.env.UPLOAD_STORAGE_DIR;
+    else process.env.UPLOAD_STORAGE_DIR = originalBrochureUploadDir;
   }
 
   // ------------------------------------------------------------- health checks
