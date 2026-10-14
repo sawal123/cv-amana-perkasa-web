@@ -68,7 +68,11 @@ async function main() {
           applied += 1;
         } catch (error) {
           const code = (error as { code?: string }).code ?? "";
-          if (ALREADY_APPLIED.has(code)) {
+          const message = (error as { message?: string }).message ?? "";
+          if (
+            ALREADY_APPLIED.has(code) ||
+            (code === "ER_CANT_CREATE_TABLE" && (message.includes("errno: 121") || message.includes("Duplicate key")))
+          ) {
             skipped += 1;
             continue;
           }

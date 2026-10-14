@@ -96,6 +96,7 @@ export default async function AdminDashboard() {
           <ActionCard icon="briefcase" title="Kelola Portfolio" description="Tambah dan edit project" href="/admin/content/projects" />
           <ActionCard icon="settings" title="Ubah teks & SEO" description="Kelola identitas dan metadata website" href="/admin/settings/identity" />
           <ActionCard icon="image" title="Unggah Gambar" description="Kelola media website" href="/admin/media" />
+          <ActionCard icon="fileText" title="Kelola Brosur" description="Upload company profile PDF" href="/admin/brochures" />
           <ActionCard icon="external" title="Buka Situs" description="Lihat website publik" href="/" external />
         </div>
       </section>

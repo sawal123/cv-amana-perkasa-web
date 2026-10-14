@@ -27,6 +27,7 @@ export const REQUIRED_TABLES = [
   "company_legalities",
   "quotation_requests",
   "media",
+  "brochures",
   "admin_users",
 ] as const;
 

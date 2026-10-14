@@ -119,6 +119,17 @@ export type WorkflowStep = { id: number; no: string; title: string; description:
 /** A company legality entry. The admin decides which ones exist. */
 export type Legality = { id: number; title: string; value: string; description: string };
 
+/**
+ * The public face of one PDF brochure. Deliberately minimal: no stored name and
+ * no filesystem path ever reach the browser — the download URL is derived from
+ * the id alone (`/brochures/{id}/download`).
+ */
+export type Brochure = {
+  id: number;
+  title: string;
+  description: string;
+};
+
 /** Bentuk utuh yang diterima <SiteShell />: settings + seluruh daftar konten. */
 export type SiteContent = {
   settings: SiteSettings;
@@ -130,6 +141,12 @@ export type SiteContent = {
   workflow: WorkflowStep[];
   testimonials: Testimonial[];
   legalities: Legality[];
+  /**
+   * The active landing brochure (first published row in CMS order), or null
+   * when none is published — the Hero download CTA is hidden in that case.
+   * There is intentionally no bundled fallback document.
+   */
+  brochure: Brochure | null;
 };
 
 /**

@@ -20,7 +20,10 @@ const nextConfig = {
   // Native image optimization needs `sharp`, which shared hosting cannot compile.
   images: { unoptimized: true },
   experimental: {
-    serverActions: { bodySizeLimit: "4mb" },
+    // 16mb, not 4mb: brochure PDFs (max 15 MB, enforced server-side in
+    // lib/brochures.ts) travel through admin server actions. Image uploads stay
+    // capped at their own 4 MB limit inside lib/media.ts.
+    serverActions: { bodySizeLimit: "16mb" },
   },
   async headers() {
     return [

@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { cache } from "react";
 import { defaultContent } from "@/data/site";
+import { loadLandingBrochure } from "@/lib/brochures";
 import { getDb } from "@/lib/db";
 import {
   clientsPartners as clientsTable,
@@ -135,6 +136,11 @@ export async function loadContent(): Promise<SiteContent> {
 
   const settings = mergeSettings(map);
 
+  // Loaded before — and independently of — the content tables below: a broken
+  // or unmigrated brochures table blanks the download CTA (brochure = null) but
+  // must never take the rest of the landing page with it.
+  const brochure = await loadLandingBrochure();
+
   try {
     const db = getDb();
     const [
@@ -165,6 +171,7 @@ export async function loadContent(): Promise<SiteContent> {
 
     return {
       settings,
+      brochure,
       services: serviceRows.map((r) => ({ id: r.id, no: r.no, title: r.title, description: r.description })),
       projects: projectRows.map((r) => toProject(r, galleryByProject.get(r.id) ?? [])),
       whyChooseUs: whyUsRows.map((r) => ({ id: r.id, title: r.title, description: r.description })),
@@ -184,7 +191,7 @@ export async function loadContent(): Promise<SiteContent> {
     };
   } catch (error) {
     warnOnce("content tables unreadable", error);
-    return { settings, ...emptyLists() };
+    return { settings, brochure, ...emptyLists() };
   }
 }
 

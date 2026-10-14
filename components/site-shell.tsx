@@ -8,7 +8,7 @@ import { projectPath } from "@/lib/project-url";
 import PublicFooter from "./public-footer";
 import PublicHeader from "./public-header";
 import QuotationForm from "./quotation-form";
-import { ArrowRight, ArrowUpRight } from "./icons";
+import { ArrowRight, ArrowUpRight, DownloadIcon } from "./icons";
 
 const reveal = {
   initial: { opacity: 0, y: 26 },
@@ -32,7 +32,7 @@ function identityLine(role: string, company: string): string {
 }
 
 export default function SiteShell({ content }: { content: SiteContent }) {
-  const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, clientsPartners: clientList, team: teamList, workflow: workflowList, testimonials: testimonialList, legalities: legalityList } = content;
+  const { settings, services: serviceList, projects: projectList, whyChooseUs: whyUsList, clientsPartners: clientList, team: teamList, workflow: workflowList, testimonials: testimonialList, legalities: legalityList, brochure } = content;
   const { identity, hero, about, contact } = settings;
 
   const whatsappDigits = contact.whatsapp.replace(/\D/g, "");
@@ -54,6 +54,7 @@ export default function SiteShell({ content }: { content: SiteContent }) {
           <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.7,delay:.28}} className="mt-9 flex flex-wrap gap-4">
             <a href="#projects" className="inline-flex items-center gap-2 rounded-full bg-blue-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-400">{hero.ctaPrimary} <ArrowRight className="h-4 w-4"/></a>
             <a href="#contact" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/10">{hero.ctaSecondary} <ArrowUpRight className="h-4 w-4"/></a>
+            {brochure ? <a href={`/brochures/${brochure.id}/download`} aria-label={`Download ${brochure.title}`} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-transparent px-6 py-3.5 text-sm font-semibold text-slate-300 transition hover:border-white/30 hover:text-white"><DownloadIcon className="h-4 w-4"/> Download Brosur</a> : null}
           </motion.div>
         </div>
         <div className="absolute bottom-7 left-1/2 hidden -translate-x-1/2 items-center gap-3 text-[10px] font-bold uppercase tracking-[.23em] text-white/50 md:flex"><span className="h-px w-12 bg-white/30"/>{hero.scrollHint}<span className="h-px w-12 bg-white/30"/></div>

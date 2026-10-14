@@ -17,6 +17,14 @@ import * as gallery from "@/lib/admin/gallery";
 import { MAX_CAPTION } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
 import { MAX_UPLOAD_BYTES, removeMedia, saveUpload, setMediaAlt } from "@/lib/media";
+import {
+  createBrochure,
+  deleteBrochure,
+  moveBrochure,
+  replaceBrochureFile,
+  setBrochurePublished,
+  updateBrochure,
+} from "@/lib/brochures";
 import { submitQuotation, updateQuotationStatus } from "@/lib/quotation";
 
 export type ActionState = { ok: boolean; message?: string; errors?: Record<string, string> };
@@ -336,6 +344,147 @@ export async function moveGalleryImageAction(id: number, delta: -1 | 1): Promise
     const result = await gallery.moveGalleryImage(parsedId.data, delta);
     if (!result.ok) return { ok: false, message: result.error };
     revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+// -------------------------------------------------------------- brochures
+
+/**
+ * Brochure mutations are a dedicated module rather than TABLES-registry CRUD:
+ * a PDF upload needs binary validation and file-replacement semantics the
+ * generic content store does not model. Every action runs through
+ * requireAdmin(), ids are validated as positive integers before reaching SQL,
+ * and the PDF itself is judged by its byte signature in lib/brochures.ts —
+ * never by file.name or file.type.
+ */
+const brochureTitleSchema = z.string().trim().min(1).max(150);
+const brochureDescriptionSchema = z.string().trim().max(500);
+
+/**
+ * The landing CTA and the admin list must both refresh: publishing, reordering
+ * or deleting a brochure changes which document `/` offers for download.
+ */
+function revalidateBrochures() {
+  revalidatePath("/");
+  revalidatePath("/admin");
+  revalidatePath("/admin/brochures");
+}
+
+function parseBrochureMeta(
+  formData: FormData,
+): { ok: true; title: string; description: string } | { ok: false; state: ActionState } {
+  const title = brochureTitleSchema.safeParse(formData.get("title"));
+  if (!title.success) {
+    return {
+      ok: false,
+      state: { ok: false, errors: { title: "Judul wajib diisi (maksimal 150 karakter)." } },
+    };
+  }
+
+  const rawDescription = formData.get("description");
+  const description = brochureDescriptionSchema.safeParse(typeof rawDescription === "string" ? rawDescription : "");
+  if (!description.success) {
+    return { ok: false, state: { ok: false, errors: { description: "Deskripsi maksimal 500 karakter." } } };
+  }
+
+  return { ok: true, title: title.data, description: description.data };
+}
+
+export async function createBrochureAction(formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+
+  const meta = parseBrochureMeta(formData);
+  if (!meta.ok) return meta.state;
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, errors: { file: "Pilih file PDF terlebih dahulu." } };
+  }
+
+  try {
+    const result = await createBrochure({ title: meta.title, description: meta.description, file });
+    if (!result.ok) return { ok: false, errors: { file: result.error } };
+    revalidateBrochures();
+    return { ok: true, message: "Brosur terunggah." };
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function updateBrochureAction(id: number, formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Brosur");
+
+  const meta = parseBrochureMeta(formData);
+  if (!meta.ok) return meta.state;
+
+  // The replacement file is optional: saving metadata alone keeps the current
+  // PDF exactly as it is.
+  const file = formData.get("file");
+  const replacement = file instanceof File && file.size > 0 ? file : null;
+
+  try {
+    if (replacement) {
+      const replaced = await replaceBrochureFile(parsedId.data, replacement);
+      if (!replaced.ok) return { ok: false, errors: { file: replaced.error } };
+    }
+    const updated = await updateBrochure(parsedId.data, { title: meta.title, description: meta.description });
+    if (!updated.ok) return { ok: false, message: updated.error };
+    revalidateBrochures();
+    return { ok: true, message: "Brosur diperbarui." };
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function deleteBrochureAction(id: number): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Brosur");
+
+  try {
+    const result = await deleteBrochure(parsedId.data);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateBrochures();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function moveBrochureAction(id: number, delta: -1 | 1): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Brosur");
+  if (delta !== -1 && delta !== 1) return { ok: false, message: "Arah tidak valid." };
+
+  try {
+    const result = await moveBrochure(parsedId.data, delta);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateBrochures();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function publishBrochureAction(id: number, published: boolean): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Brosur");
+
+  try {
+    const result = await setBrochurePublished(parsedId.data, published);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateBrochures();
     return OK;
   } catch {
     return databaseUnavailable();
