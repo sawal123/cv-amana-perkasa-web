@@ -9,6 +9,7 @@
  * by MySQL, and that admin auth accepts real sessions and refuses everything
  * else. Mutates the database, then restores it from a snapshot taken first.
  */
+import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SignJWT } from "jose";
@@ -400,6 +401,93 @@ try {
   check("admin sidebar carries the Brosur PDF item", brochuresPage.body.includes("/admin/brochures"));
   check("admin brochure create page renders", (await grab("/admin/brochures/new", validToken)).body.includes("Tambah brosur"));
   check("admin brochure edit untuk id tak dikenal -> 404", (await grab("/admin/brochures/999999/edit", validToken)).status === 404);
+
+  // ---- brochure PDF upload route handler E2E tests ---------------------
+  // 1. unauthenticated PDF upload rejected
+  const unauthUploadRes = await fetch(`${origin}/api/admin/brochures`, { method: "POST" });
+  check("unauthenticated PDF upload rejected", unauthUploadRes.status === 401, `status=${unauthUploadRes.status}`);
+
+  // 2. valid authenticated <=15MB PDF accepted
+  const validBrochureFd = new FormData();
+  validBrochureFd.set("title", "E2E ROUTE BROCHURE");
+  validBrochureFd.set("description", "Uploaded in E2E test");
+  const validPdfBytes = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(1024)]);
+  validBrochureFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "e2e-brochure.pdf");
+
+  const authUploadRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: validBrochureFd,
+  });
+  check("valid authenticated <=15MB PDF accepted", authUploadRes.status === 201, `status=${authUploadRes.status}`);
+
+  const [e2eBrochureRow] = (await connection.query("SELECT * FROM brochures WHERE title = ?", ["E2E ROUTE BROCHURE"]))[0];
+  check("brosur E2E tersimpan di database", !!e2eBrochureRow);
+
+  // 3. oversized PDF rejected
+  const oversizedFd = new FormData();
+  oversizedFd.set("title", "E2E OVERSIZED");
+  oversizedFd.set("description", "Should fail");
+  const hugeBytes = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(15 * 1024 * 1024 + 1024)]);
+  oversizedFd.set("file", new Blob([hugeBytes], { type: "application/pdf" }), "huge.pdf");
+
+  const oversizedRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: oversizedFd,
+  });
+  check("oversized PDF rejected", oversizedRes.status === 400, `status=${oversizedRes.status}`);
+
+  // 4. replacement still transactional
+  if (e2eBrochureRow) {
+    const badReplaceFd = new FormData();
+    badReplaceFd.set("file", new Blob([Buffer.from("not a real pdf")], { type: "application/pdf" }), "fake.pdf");
+    const badReplaceRes = await fetch(`${origin}/api/admin/brochures/${e2eBrochureRow.id}`, {
+      method: "POST",
+      headers: { cookie: `amana_admin=${validToken}` },
+      body: badReplaceFd,
+    });
+    check("replacement dengan non-PDF ditolak", badReplaceRes.status === 400);
+
+    const [afterBadRow] = (await connection.query("SELECT * FROM brochures WHERE id = ?", [e2eBrochureRow.id]))[0];
+    check(
+      "replacement still transactional",
+      afterBadRow?.stored_name === e2eBrochureRow.stored_name && existsSync(join(uploadsDir, "brochures", afterBadRow.stored_name)),
+    );
+  }
+
+  // 5. hostile/non-pdf extension downloads with .pdf filename
+  const hostileUploadFd = new FormData();
+  hostileUploadFd.set("title", "E2E HOSTILE BROCHURE");
+  hostileUploadFd.set("description", "Uploaded as company.exe");
+  hostileUploadFd.set("file", new Blob([validPdfBytes], { type: "application/pdf" }), "company.exe");
+
+  const hostileUploadRes = await fetch(`${origin}/api/admin/brochures`, {
+    method: "POST",
+    headers: { cookie: `amana_admin=${validToken}` },
+    body: hostileUploadFd,
+  });
+  check("hostile upload company.exe diterima", hostileUploadRes.status === 201);
+
+  const [hostileBrochureRow] = (await connection.query("SELECT * FROM brochures WHERE title = ?", ["E2E HOSTILE BROCHURE"]))[0];
+  check("hostile filename dinormalkan ke .pdf di DB", hostileBrochureRow?.filename === "company.pdf");
+
+  if (hostileBrochureRow) {
+    const downloadRes = await fetch(`${origin}/brochures/${hostileBrochureRow.id}/download`);
+    const cdHeader = downloadRes.headers.get("content-disposition") ?? "";
+    check(
+      "hostile/non-pdf extension downloads with .pdf filename",
+      cdHeader.includes('filename="company.pdf"') && !cdHeader.includes(".exe"),
+      cdHeader,
+    );
+    await unlink(join(uploadsDir, "brochures", hostileBrochureRow.stored_name)).catch(() => undefined);
+    await connection.query("DELETE FROM brochures WHERE id = ?", [hostileBrochureRow.id]);
+  }
+
+  if (e2eBrochureRow) {
+    await unlink(join(uploadsDir, "brochures", e2eBrochureRow.stored_name)).catch(() => undefined);
+    await connection.query("DELETE FROM brochures WHERE id = ?", [e2eBrochureRow.id]);
+  }
 
   // ---- why choose us ---------------------------------------------------
   const WHY = "E2E-WHY";

@@ -60,8 +60,23 @@ export async function destroySession(): Promise<void> {
   jar.delete(SESSION_COOKIE);
 }
 
-export async function getSession(): Promise<Session | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+export async function getSession(request?: Request): Promise<Session | null> {
+  let token: string | undefined;
+
+  if (request) {
+    const cookieHeader = request.headers.get("cookie") ?? "";
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
+    if (match) token = decodeURIComponent(match[1]);
+  }
+
+  if (!token) {
+    try {
+      token = (await cookies()).get(SESSION_COOKIE)?.value;
+    } catch {
+      // Invariant: cookies() called outside Next.js request context
+    }
+  }
+
   if (!token) return null;
 
   try {

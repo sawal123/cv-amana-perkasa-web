@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { createBrochureAction, updateBrochureAction } from "@/app/admin/actions";
+import { updateBrochureAction } from "@/app/admin/actions";
 import { NavIcon } from "./icons";
 import { formatBrochureSize } from "./brochure-manager";
 import { Banner, Card, Field, PageHeader, btnPrimary, btnSecondary, btnSecondarySm, inputClass } from "./ui";
@@ -76,9 +76,27 @@ export default function BrochureEditor({
       formData.set("description", description);
       if (file) formData.set("file", file);
 
-      const result = brochure
-        ? await updateBrochureAction(brochure.id, formData)
-        : await createBrochureAction(formData);
+      let result: { ok: boolean; message?: string; errors?: Record<string, string> };
+
+      if (file) {
+        // PDF transfer travels through the authenticated route handler, keeping
+        // Server Actions bodySizeLimit at 4 MB.
+        const url = brochure ? `/api/admin/brochures/${brochure.id}` : "/api/admin/brochures";
+        const response = await fetch(url, {
+          method: "POST",
+          body: formData,
+        });
+        result = await response.json().catch(() => ({
+          ok: false,
+          message: "Gagal menyimpan brosur. Coba lagi.",
+        }));
+      } else if (brochure) {
+        // Metadata-only edit uses the existing Server Action
+        result = await updateBrochureAction(brochure.id, formData);
+      } else {
+        setErrors({ file: "Pilih file PDF terlebih dahulu." });
+        return;
+      }
 
       if (result.ok) {
         router.refresh();

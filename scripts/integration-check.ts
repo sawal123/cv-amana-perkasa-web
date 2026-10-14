@@ -16,6 +16,11 @@ import { defaultContent } from "@/data/site";
 import { adminUsers, quotationRequests, settings as settingsTable } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+// @ts-expect-error next.config.mjs does not have TypeScript declaration
+import nextConfig from "../next.config.mjs";
+import { SignJWT } from "jose";
+import { POST as uploadBrochureRoute } from "@/app/api/admin/brochures/route";
+import { GET as downloadBrochureRoute } from "@/app/brochures/[id]/download/route";
 import {
   addGalleryImage,
   deleteGalleryImage,
@@ -1063,8 +1068,18 @@ async function main() {
   );
 
   // Filename & header safety.
-  check("sanitizeOriginalFilename membuang path traversal", sanitizeOriginalFilename("../../etc/passwd") === "passwd");
+  check(
+    "global Server Actions limit remains 4mb",
+    nextConfig.experimental?.serverActions?.bodySizeLimit === "4mb",
+    `bodySizeLimit=${nextConfig.experimental?.serverActions?.bodySizeLimit}`,
+  );
+  check("sanitizeOriginalFilename membuang path traversal", sanitizeOriginalFilename("../../etc/passwd") === "passwd.pdf");
   check("sanitizeOriginalFilename membuang backslash path", sanitizeOriginalFilename("..\\..\\windows\\x.pdf") === "x.pdf");
+  check("sanitizeOriginalFilename menormalkan ekstensi non-pdf .exe -> .pdf", sanitizeOriginalFilename("company.exe") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan ekstensi non-pdf .php -> .pdf", sanitizeOriginalFilename("shell.php") === "shell.pdf");
+  check("sanitizeOriginalFilename menormalkan tanpa ekstensi -> .pdf", sanitizeOriginalFilename("company") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan ganda .pdf.exe -> .pdf", sanitizeOriginalFilename("company.pdf.exe") === "company.pdf");
+  check("sanitizeOriginalFilename menormalkan uppercase .PDF -> .pdf", sanitizeOriginalFilename("company.PDF") === "company.pdf");
   const hostileDisposition = brochureContentDisposition('evil"\\\r\nSet-Cookie: x.pdf');
   check(
     "Content-Disposition tidak bisa disuntik header/quote",
@@ -1171,7 +1186,96 @@ async function main() {
           !!afterBad &&
           existsSync(join(tempDir, "brochures", afterBad.storedName)),
       );
+      check(
+        "replacement still transactional",
+        Boolean(
+          afterBad &&
+            afterReplace &&
+            afterBad.storedName === afterReplace.storedName &&
+            existsSync(join(tempDir, "brochures", afterBad.storedName)),
+        ),
+      );
       check("ganti file untuk id tak dikenal ditolak", !(await replaceBrochureFile(999_999, fakePdf("x.pdf"))).ok);
+
+      // Route Handler transfer tests:
+      const adminToken = await new SignJWT({ username: "admin" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject("1")
+        .setIssuer("amana-perkasa-admin")
+        .setIssuedAt()
+        .setExpirationTime("1d")
+        .sign(new TextEncoder().encode(process.env.AUTH_SECRET!));
+
+      // 1. Unauthenticated PDF upload rejected
+      const unauthReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+      });
+      const unauthRes = await uploadBrochureRoute(unauthReq);
+      check("unauthenticated PDF upload rejected", unauthRes.status === 401);
+
+      // 2. Valid authenticated <=15MB PDF accepted
+      const validFd = new FormData();
+      validFd.set("title", "TEST ROUTE BROCHURE");
+      validFd.set("description", "Uploaded via route handler");
+      validFd.set("file", fakePdf("valid-sample.pdf", 1024));
+
+      const authReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: validFd,
+      });
+      const authRes = await uploadBrochureRoute(authReq);
+      check("valid authenticated <=15MB PDF accepted", authRes.status === 201);
+      const routeItem = (await listBrochures()).find((row) => row.title === "TEST ROUTE BROCHURE");
+      check("brosur dari route handler masuk database", !!routeItem);
+
+      // 3. Oversized PDF rejected
+      const oversizedFd = new FormData();
+      oversizedFd.set("title", "TEST OVERSIZED");
+      oversizedFd.set("description", "Should be rejected");
+      oversizedFd.set("file", fakeFile("huge.pdf", Buffer.concat([PDF_HEADER, Buffer.alloc(MAX_BROCHURE_BYTES + 1024)]), "application/pdf"));
+
+      const oversizedReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: oversizedFd,
+      });
+      const oversizedRes = await uploadBrochureRoute(oversizedReq);
+      check("oversized PDF rejected", oversizedRes.status === 400);
+
+      // 4. Hostile/non-pdf extension downloads with .pdf filename
+      const hostileFd = new FormData();
+      hostileFd.set("title", "HOSTILE EXTENSION TEST");
+      hostileFd.set("description", "Uploaded as company.exe");
+      hostileFd.set("file", fakePdf("company.exe", 128));
+
+      const hostileReq = new Request("http://localhost:3000/api/admin/brochures", {
+        method: "POST",
+        headers: { cookie: `amana_admin=${adminToken}` },
+        body: hostileFd,
+      });
+      const hostileRes = await uploadBrochureRoute(hostileReq);
+      check("upload file PDF dengan nama company.exe diterima", hostileRes.status === 201);
+      const hostileItem = (await listBrochures()).find((row) => row.title === "HOSTILE EXTENSION TEST");
+      check("nama berkas di DB dinormalkan berakhiran .pdf", hostileItem?.filename === "company.pdf");
+
+      if (hostileItem) {
+        const downloadRes = await downloadBrochureRoute(
+          new Request(`http://localhost:3000/brochures/${hostileItem.id}/download`),
+          { params: Promise.resolve({ id: String(hostileItem.id) }) },
+        );
+        const cd = downloadRes.headers.get("content-disposition") ?? "";
+        check(
+          "hostile/non-pdf extension downloads with .pdf filename",
+          cd.includes('filename="company.pdf"') && !cd.includes(".exe"),
+          cd,
+        );
+        await deleteBrochure(hostileItem.id);
+      }
+
+      if (routeItem) {
+        await deleteBrochure(routeItem.id);
+      }
 
       // Delete: DB first, then the physical file; a missing file is not a failure.
       const rowB = await getBrochureById(itemB.id);

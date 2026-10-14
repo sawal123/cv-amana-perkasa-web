@@ -2,10 +2,21 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { sep } from "node:path";
 import { asc, eq, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { brochures as brochuresTable, type BrochureRow } from "@/lib/db/schema";
 import { brochureStoragePath, resolveBrochureStorageDir } from "@/lib/upload-storage";
 import type { Brochure } from "@/lib/types";
+
+export function revalidateBrochures(): void {
+  try {
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/brochures");
+  } catch {
+    // Safe when invoked in environments without Next request context
+  }
+}
 
 /**
  * PDF brochure storage + data layer.
@@ -65,13 +76,34 @@ function toAdminItem(row: BrochureRow): BrochureAdminItem {
 
 /**
  * Reduces an upload name to a display-safe label: no directory parts (some
- * clients send full paths), no control characters. Used for the stored
- * `filename` column and the download label — never to build a filesystem path.
+ * clients send full paths), no control characters, and always guaranteed to
+ * terminate with ".pdf". Used for the stored `filename` column and the download
+ * label — never to build a filesystem path. A valid PDF uploaded as
+ * "company.exe" is sanitized to "company.pdf", never ".exe".
  */
 export function sanitizeOriginalFilename(name: string): string {
   const base = (name ?? "").replace(/\\/g, "/").split("/").pop() ?? "";
   const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, "").trim();
-  return (cleaned || "brochure.pdf").slice(0, 200);
+  if (!cleaned) return "brochure.pdf";
+
+  let stem = cleaned;
+  if (/\.pdf$/i.test(stem)) {
+    stem = stem.slice(0, -4);
+  } else {
+    const lastDot = stem.lastIndexOf(".");
+    if (lastDot >= 0) {
+      stem = stem.slice(0, lastDot);
+    }
+  }
+  if (/\.pdf$/i.test(stem)) {
+    stem = stem.slice(0, -4);
+  }
+
+  const safeStem = stem.replace(/^[\s.]+|[\s.]+$/g, "");
+  if (!safeStem) return "brochure.pdf";
+
+  const finalName = `${safeStem}.pdf`;
+  return finalName.length > 200 ? `${safeStem.slice(0, 196)}.pdf` : finalName;
 }
 
 /**
