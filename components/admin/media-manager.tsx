@@ -48,7 +48,8 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
 
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Semua");
-  const [viewMode, setViewMode] = useState<"grid" | "grouped">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "folders">("grid");
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [batchTargetGroup, setBatchTargetGroup] = useState("");
@@ -229,13 +230,24 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
   // Grouped items representation
   const itemsByGroup = useMemo(() => {
     const map = new Map<string, MediaItem[]>();
-    for (const item of filteredItems) {
+    for (const item of items) {
       const g = item.groupName || "Umum";
       if (!map.has(g)) map.set(g, []);
       map.get(g)!.push(item);
     }
     return map;
-  }, [filteredItems]);
+  }, [items]);
+
+  // Items for currently opened folder (filtered by search if any)
+  const currentFolderItems = useMemo(() => {
+    if (!openFolder) return [];
+    const groupItems = itemsByGroup.get(openFolder) ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return groupItems;
+    return groupItems.filter((item) =>
+      `${item.filename} ${item.alt} ${item.path} ${item.groupName}`.toLowerCase().includes(q)
+    );
+  }, [openFolder, itemsByGroup, search]);
 
   return (
     <div className="space-y-6">
@@ -332,7 +344,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
                           : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                       }`}
                     >
-                      {grp}
+                      📁 {grp}
                     </button>
                   ))}
                   <button
@@ -397,7 +409,7 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
       {/* Library Card */}
       <Card
         title="Pustaka Gambar"
-        description={`${items.length} berkas tersimpan. Dikelompokkan agar mudah ditemukan saat memilih foto project atau galeri.`}
+        description={`${items.length} berkas tersimpan. Buka folder untuk melihat isi gambar di dalamnya, atau gunakan tab Grid Semua.`}
       >
         {/* Controls Bar: Search, View Mode, Group Tabs */}
         <div className="space-y-4 pb-2">
@@ -405,7 +417,11 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
             <div className="flex-1 min-w-[240px] max-w-md">
               <input
                 type="text"
-                placeholder="Cari gambar berdasarkan nama, alt, atau grup…"
+                placeholder={
+                  viewMode === "folders" && openFolder
+                    ? `Cari gambar dalam folder "${openFolder}"…`
+                    : "Cari gambar berdasarkan nama, alt, atau grup…"
+                }
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={inputClass}
@@ -416,25 +432,36 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
               <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
                 <button
                   type="button"
-                  onClick={() => setViewMode("grid")}
+                  onClick={() => {
+                    setViewMode("grid");
+                  }}
                   className={`rounded-md px-3 py-1.5 transition ${
-                    viewMode === "grid" ? "bg-white font-semibold text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                    viewMode === "grid"
+                      ? "bg-white font-semibold text-slate-900 shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Grid Semua
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode("grouped")}
+                  onClick={() => {
+                    setViewMode("folders");
+                    if (activeTab !== "Semua") {
+                      setOpenFolder(activeTab);
+                    }
+                  }}
                   className={`rounded-md px-3 py-1.5 transition ${
-                    viewMode === "grouped" ? "bg-white font-semibold text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                    viewMode === "folders"
+                      ? "bg-white font-semibold text-slate-900 shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Kelompok per Grup
+                  Sistem Folder
                 </button>
               </div>
 
-              {filteredItems.length > 0 ? (
+              {viewMode === "grid" && filteredItems.length > 0 ? (
                 <button
                   type="button"
                   onClick={selectedIds.length === filteredItems.length ? clearSelection : selectAllFiltered}
@@ -456,12 +483,18 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
                 <button
                   key={grp}
                   type="button"
-                  onClick={() => setActiveTab(grp)}
+                  onClick={() => {
+                    setActiveTab(grp);
+                    if (viewMode === "folders") {
+                      if (grp === "Semua") setOpenFolder(null);
+                      else setOpenFolder(grp);
+                    }
+                  }}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition ${
                     active ? "bg-blue-600 text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
-                  <span>{grp}</span>
+                  <span>📁 {grp}</span>
                   <span
                     className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                       active ? "bg-blue-700 text-blue-100" : "bg-slate-200 text-slate-600"
@@ -538,68 +571,201 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
             title="Belum ada gambar"
             description="Unggah gambar pertama, lalu pilih dari pustaka ini pada form Project, Galeri, Tim, atau Settings."
           />
-        ) : filteredItems.length === 0 ? (
-          <div className="py-14 text-center">
-            <p className="text-sm font-semibold text-slate-700">Tidak ada gambar yang cocok dengan pencarian.</p>
-            <p className="mt-1 text-xs text-slate-400">Coba ubah kata kunci pencarian atau pilih tab grup lain.</p>
-          </div>
         ) : viewMode === "grid" ? (
-          /* Grid View */
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {filteredItems.map((item) => (
-              <MediaCard
-                key={item.id}
-                item={item}
-                isSelected={selectedIds.includes(item.id)}
-                onToggleSelect={() => toggleSelect(item.id)}
-                isEditingGroup={editingGroupId === item.id}
-                onStartEditGroup={() => {
-                  setEditingGroupId(item.id);
-                  setSingleTargetGroup(item.groupName || "Umum");
-                }}
-                onCancelEditGroup={() => setEditingGroupId(null)}
-                singleTargetGroup={singleTargetGroup}
-                onChangeSingleTargetGroup={setSingleTargetGroup}
-                onSaveSingleGroup={() => saveSingleGroupChange(item.id)}
-                availableGroups={availableGroups}
-                onDelete={() =>
-                  confirm({
-                    title: "Hapus gambar?",
-                    description: `Berkas "${item.filename}" hanya dapat dihapus bila tidak sedang digunakan oleh project atau konten lain.`,
-                    confirmLabel: "Hapus",
-                    onConfirm: () => remove(item.id),
-                  })
-                }
-                busy={busy}
-              />
-            ))}
-          </div>
+          /* Grid View (Semua Gambar) */
+          filteredItems.length === 0 ? (
+            <div className="py-14 text-center">
+              <p className="text-sm font-semibold text-slate-700">Tidak ada gambar yang cocok dengan pencarian.</p>
+              <p className="mt-1 text-xs text-slate-400">Coba ubah kata kunci pencarian atau pilih tab grup lain.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {filteredItems.map((item) => (
+                <MediaCard
+                  key={item.id}
+                  item={item}
+                  isSelected={selectedIds.includes(item.id)}
+                  onToggleSelect={() => toggleSelect(item.id)}
+                  isEditingGroup={editingGroupId === item.id}
+                  onStartEditGroup={() => {
+                    setEditingGroupId(item.id);
+                    setSingleTargetGroup(item.groupName || "Umum");
+                  }}
+                  onCancelEditGroup={() => setEditingGroupId(null)}
+                  singleTargetGroup={singleTargetGroup}
+                  onChangeSingleTargetGroup={setSingleTargetGroup}
+                  onSaveSingleGroup={() => saveSingleGroupChange(item.id)}
+                  availableGroups={availableGroups}
+                  onDelete={() =>
+                    confirm({
+                      title: "Hapus gambar?",
+                      description: `Berkas "${item.filename}" hanya dapat dihapus bila tidak sedang digunakan oleh project atau konten lain.`,
+                      confirmLabel: "Hapus",
+                      onConfirm: () => remove(item.id),
+                    })
+                  }
+                  busy={busy}
+                />
+              ))}
+            </div>
+          )
         ) : (
-          /* Grouped by Category View */
-          <div className="space-y-8">
-            {Array.from(itemsByGroup.entries()).map(([groupName, groupItems]) => (
-              <div key={groupName} className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-bold text-slate-900">📁 {groupName}</span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                      {groupItems.length} berkas
-                    </span>
-                  </div>
+          /* Sistem Folder Mode */
+          openFolder === null ? (
+            /* Daftar Folder / Directory Grid */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span>Pilih folder untuk membuka dan melihat isi gambar di dalamnya ({availableGroups.length} folder):</span>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {availableGroups.map((grp) => {
+                  const groupItems = itemsByGroup.get(grp) ?? [];
+                  const folderSize = groupItems.reduce((acc, i) => acc + i.size, 0);
+
+                  return (
+                    <div
+                      key={grp}
+                      onClick={() => {
+                        setOpenFolder(grp);
+                        setActiveTab(grp);
+                      }}
+                      className="group relative flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs transition hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md cursor-pointer select-none"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 transition group-hover:scale-105 group-hover:bg-amber-500/20">
+                            <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-1.5V9a3 3 0 0 0-3-3h-3.379a3 3 0 0 1-2.121-.879L8.379 3.999A3 3 0 0 0 6.257 3.12H4.5A3 3 0 0 0 1.5 6.12v11.88a3 3 0 0 0 3 3h15Z" />
+                            </svg>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+                            {groupItems.length} berkas
+                          </span>
+                        </div>
+
+                        <div className="mt-4">
+                          <h3
+                            className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition truncate"
+                            title={grp}
+                          >
+                            📁 {grp}
+                          </h3>
+                          <p className="mt-0.5 text-xs text-slate-400">Total {formatSize(folderSize)}</p>
+                        </div>
+                      </div>
+
+                      {/* Mini preview stack */}
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                        <div className="flex -space-x-2 overflow-hidden">
+                          {groupItems.slice(0, 3).map((item) => (
+                            <div
+                              key={item.id}
+                              className="relative inline-block h-8 w-8 rounded-md bg-slate-100 ring-2 ring-white overflow-hidden shadow-2xs"
+                            >
+                              <AdminImagePreview src={item.path} className="h-full w-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                        <span className="text-xs font-bold text-blue-600 transition group-hover:translate-x-0.5">
+                          Buka Folder →
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Isi Folder yang Sedang Dibuka */
+            <div className="space-y-5">
+              {/* Folder Breadcrumb & Action Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200/90 bg-blue-50/70 p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => {
-                      const ids = groupItems.map((i) => i.id);
-                      setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
+                      setOpenFolder(null);
+                      setActiveTab("Semua");
                     }}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-slate-900"
                   >
-                    Pilih Semua di Grup Ini
+                    ← Kembali ke Semua Folder
                   </button>
+
+                  <span className="text-slate-300">/</span>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">📂</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-slate-900">{openFolder}</span>
+                        <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white shadow-2xs">
+                          {currentFolderItems.length} berkas
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Total {formatSize(currentFolderItems.reduce((acc, i) => acc + i.size, 0))}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {currentFolderItems.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ids = currentFolderItems.map((i) => i.id);
+                        setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition"
+                    >
+                      Pilih Semua di Folder Ini
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetGroup(openFolder);
+                      setIsNewGroup(false);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 font-bold text-white shadow-2xs hover:bg-blue-700 transition"
+                  >
+                    + Unggah ke Folder Ini
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid Images in Opened Folder */}
+              {currentFolderItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-14 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600">
+                    <svg className="h-8 w-8" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-1.5V9a3 3 0 0 0-3-3h-3.379a3 3 0 0 1-2.121-.879L8.379 3.999A3 3 0 0 0 6.257 3.12H4.5A3 3 0 0 0 1.5 6.12v11.88a3 3 0 0 0 3 3h15Z" />
+                    </svg>
+                  </div>
+                  <p className="mt-3 text-sm font-bold text-slate-800">Folder "{openFolder}" masih kosong</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Gunakan form di atas untuk mengunggah gambar ke folder ini.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetGroup(openFolder);
+                      setIsNewGroup(false);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="mt-3.5 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700"
+                  >
+                    Unggah Gambar Sekarang
+                  </button>
+                </div>
+              ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                  {groupItems.map((item) => (
+                  {currentFolderItems.map((item) => (
                     <MediaCard
                       key={item.id}
                       item={item}
@@ -627,9 +793,9 @@ export default function MediaManager({ items, maxBytes, uploadDirHint }: Props) 
                     />
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )
         )}
 
         <p className="mt-6 text-xs text-slate-400">
