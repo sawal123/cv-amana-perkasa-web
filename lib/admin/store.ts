@@ -74,21 +74,22 @@ async function nextPosition(key: ContentTable): Promise<number> {
   return asNumber(result[0]?.value) + 1;
 }
 
-export async function saveRow(key: ContentTable, values: Payload, id?: number): Promise<void> {
+export async function saveRow(key: ContentTable, values: Payload, id?: number): Promise<number> {
   const table = HANDLES[key];
   const parsed = TABLES[key].schema.parse(values);
 
   if (id == null) {
-    await getDb()
+    const [result] = await getDb()
       .insert(table as MySqlTable)
       .values({ ...parsed, position: await nextPosition(key), published: true } as never);
-    return;
+    return Number((result as unknown as { insertId?: number }).insertId ?? 0);
   }
 
   await getDb()
     .update(table as MySqlTable)
     .set(parsed as never)
     .where(eq(table.id, id));
+  return id;
 }
 
 export async function deleteRow(key: ContentTable, id: number): Promise<void> {

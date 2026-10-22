@@ -36,6 +36,13 @@
       "when": 1791964962299,
       "tag": "0004_brochures",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1792000000000,
+      "tag": "0005_media_group",
+      "breakpoints": true
     }
   ]
 }

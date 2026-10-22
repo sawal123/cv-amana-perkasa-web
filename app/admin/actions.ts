@@ -16,7 +16,14 @@ import {
 import * as gallery from "@/lib/admin/gallery";
 import { MAX_CAPTION } from "@/lib/admin/gallery";
 import * as store from "@/lib/admin/store";
-import { MAX_UPLOAD_BYTES, removeMedia, saveUpload, setMediaAlt } from "@/lib/media";
+import {
+  MAX_UPLOAD_BYTES,
+  batchUpdateMediaGroup,
+  removeMedia,
+  saveUpload,
+  setMediaAlt,
+  updateMediaGroup,
+} from "@/lib/media";
 import {
   deleteBrochure,
   moveBrochure,
@@ -116,7 +123,8 @@ export async function saveContentAction(
   table: ContentTable,
   values: Payload,
   id?: number,
-): Promise<ActionState> {
+  galleryImages?: string[],
+): Promise<ActionState & { id?: number }> {
   await requireAdmin();
   if (!isContentTable(table)) return { ok: false, message: "Tabel tidak dikenal." };
 
@@ -126,9 +134,18 @@ export async function saveContentAction(
   }
 
   try {
-    await store.saveRow(table, parsed.data, id);
+    const rowId = await store.saveRow(table, parsed.data, id);
+    const targetId = id ?? rowId;
+
+    if (table === "projects" && galleryImages && galleryImages.length > 0 && targetId > 0) {
+      await gallery.addGalleryImages(
+        targetId,
+        galleryImages.map((img) => ({ image: img })),
+      );
+    }
+
     revalidateAll();
-    return OK;
+    return { ok: true, id: targetId };
   } catch {
     return databaseUnavailable();
   }
@@ -216,18 +233,62 @@ export async function saveSettingsAction(
 export async function uploadMediaAction(formData: FormData): Promise<ActionState> {
   await requireAdmin();
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, message: "Pilih file terlebih dahulu." };
+  const rawFiles = formData.getAll("files");
+  const singleFile = formData.get("file");
+  const files: File[] = [];
+
+  for (const item of rawFiles) {
+    if (item instanceof File && item.size > 0) files.push(item);
+  }
+  if (files.length === 0 && singleFile instanceof File && singleFile.size > 0) {
+    files.push(singleFile);
+  }
+
+  if (files.length === 0) return { ok: false, message: "Pilih file terlebih dahulu." };
 
   const alt = typeof formData.get("alt") === "string" ? String(formData.get("alt")) : "";
+  const groupName =
+    typeof formData.get("groupName") === "string" && String(formData.get("groupName")).trim()
+      ? String(formData.get("groupName"))
+      : typeof formData.get("group") === "string" && String(formData.get("group")).trim()
+        ? String(formData.get("group"))
+        : "Umum";
 
   try {
-    const result = await saveUpload(file, alt);
-    if (!result.ok) return { ok: false, message: result.error };
+    const uploadedNames: string[] = [];
+    const errors: string[] = [];
+
+    for (const file of files) {
+      const result = await saveUpload(file, alt, groupName);
+      if (result.ok) {
+        uploadedNames.push(result.item.filename);
+      } else {
+        errors.push(`${file.name}: ${result.error}`);
+      }
+    }
+
     revalidateAll();
-    return { ok: true, message: `${result.item.filename} terunggah.` };
+
+    if (errors.length > 0 && uploadedNames.length === 0) {
+      return { ok: false, message: errors.join("; ") };
+    }
+
+    if (errors.length > 0) {
+      return {
+        ok: true,
+        message: `${uploadedNames.length} berkas terunggah ke grup "${groupName}". (${errors.join("; ")})`,
+      };
+    }
+
+    return {
+      ok: true,
+      message:
+        files.length > 1
+          ? `${files.length} gambar berhasil diunggah ke grup "${groupName}".`
+          : `${uploadedNames[0]} terunggah ke grup "${groupName}".`,
+    };
   } catch {
-    return { ok: false, message: `Gagal menyimpan. Maksimum ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.` };
+    return { ok: false, message: `Gagal menyimpan. Maksimum ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)} MB per file.` };
   }
 }
 
@@ -249,6 +310,38 @@ export async function updateMediaAltAction(id: number, alt: string): Promise<Act
     await setMediaAlt(id, alt);
     revalidateAll();
     return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function updateMediaGroupAction(id: number, groupName: string): Promise<ActionState> {
+  await requireAdmin();
+  const parsedId = positiveId.safeParse(id);
+  if (!parsedId.success) return notFoundResult("Gambar");
+
+  try {
+    await updateMediaGroup(parsedId.data, groupName);
+    revalidateAll();
+    return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function batchUpdateMediaGroupAction(ids: number[], groupName: string): Promise<ActionState> {
+  await requireAdmin();
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { ok: false, message: "Pilih setidaknya satu gambar." };
+  }
+
+  const validIds = ids.filter((n) => Number.isInteger(n) && n > 0);
+  if (validIds.length === 0) return { ok: false, message: "ID gambar tidak valid." };
+
+  try {
+    await batchUpdateMediaGroup(validIds, groupName);
+    revalidateAll();
+    return { ok: true, message: `${validIds.length} gambar dipindahkan ke grup "${groupName.trim() || "Umum"}".` };
   } catch {
     return databaseUnavailable();
   }
@@ -291,6 +384,37 @@ export async function addGalleryImageAction(
     if (!result.ok) return { ok: false, message: result.error };
     revalidateAll();
     return OK;
+  } catch {
+    return databaseUnavailable();
+  }
+}
+
+export async function addMultipleGalleryImagesAction(
+  projectId: number,
+  images: string[],
+): Promise<ActionState> {
+  await requireAdmin();
+
+  const id = positiveId.safeParse(projectId);
+  if (!id.success) return notFoundResult("Project");
+
+  if (!Array.isArray(images) || images.length === 0) {
+    return { ok: false, message: "Pilih setidaknya satu gambar." };
+  }
+
+  const validImages = images
+    .filter((img) => typeof img === "string" && SAFE_UPLOAD_PATH.test(img.trim()))
+    .map((img) => ({ image: img.trim() }));
+
+  if (validImages.length === 0) {
+    return { ok: false, message: "Tidak ada gambar yang valid dari pustaka media." };
+  }
+
+  try {
+    const result = await gallery.addGalleryImages(id.data, validImages);
+    if (!result.ok) return { ok: false, message: result.error };
+    revalidateAll();
+    return { ok: true, message: `${validImages.length} gambar berhasil ditambahkan ke galeri.` };
   } catch {
     return databaseUnavailable();
   }

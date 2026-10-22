@@ -27,7 +27,12 @@ export default async function NewContentPage({ params }: { params: Promise<{ tab
       titleField={definition.titleField}
       fields={definition.fields}
       initialValues={initialValues}
-      media={media.map((item) => ({ path: item.path, alt: item.alt, filename: item.filename }))}
+      media={media.map((item) => ({
+        path: item.path,
+        alt: item.alt,
+        filename: item.filename,
+        groupName: item.groupName,
+      }))}
     />
   );
 }

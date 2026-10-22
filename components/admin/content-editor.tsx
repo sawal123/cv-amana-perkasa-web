@@ -3,11 +3,29 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { saveContentAction } from "@/app/admin/actions";
+import {
+  addMultipleGalleryImagesAction,
+  deleteGalleryImageAction,
+  saveContentAction,
+} from "@/app/admin/actions";
 import type { ContentTable, FieldDef, Payload } from "@/lib/admin/fields";
+import AdminImagePreview from "./admin-image-preview";
+import { useConfirmDialog } from "./confirm-dialog";
 import { NavIcon } from "./icons";
-import MediaPicker, { type MediaOption } from "./media-picker";
-import { Banner, Card, Field, PageHeader, btnPrimary, btnSecondary, inputClass } from "./ui";
+import MediaPicker, { MultiMediaDialog, type MediaOption } from "./media-picker";
+import {
+  Banner,
+  Card,
+  Field,
+  PageHeader,
+  btnDangerSm,
+  btnPrimary,
+  btnSecondary,
+  btnSecondarySm,
+  inputClass,
+} from "./ui";
+
+type GalleryItem = { id: number; image: string; caption?: string };
 
 type Props = {
   table: ContentTable;
@@ -19,6 +37,7 @@ type Props = {
   initialValues: Payload;
   id?: number;
   media: MediaOption[];
+  initialGallery?: GalleryItem[];
 };
 
 function emptyValues(fields: FieldDef[]): Payload {
@@ -28,10 +47,7 @@ function emptyValues(fields: FieldDef[]): Payload {
 }
 
 /**
- * Groups a table's fields into form sections. Project is the only table with
- * enough fields to need real grouping; the rest render as one compact card.
- * Field names/labels/validation all come from the registry — nothing here
- * defines or changes them.
+ * Groups a table's fields into form sections.
  */
 function sectionsFor(table: ContentTable, fields: FieldDef[]): { title: string; fields: FieldDef[] }[] {
   const byName = new Map(fields.map((field) => [field.name, field]));
@@ -40,7 +56,7 @@ function sectionsFor(table: ContentTable, fields: FieldDef[]): { title: string; 
   if (table === "projects") {
     const groups = [
       { title: "Informasi Utama", names: ["title", "category", "year", "client", "location"] },
-      { title: "Media", names: ["image"] },
+      { title: "Cover / Thumbnail", names: ["image"] },
       { title: "Deskripsi", names: ["description"] },
       { title: "Scope Pekerjaan", names: ["scope"] },
       { title: "Case Study", names: ["objective", "approach", "outcome"] },
@@ -53,12 +69,31 @@ function sectionsFor(table: ContentTable, fields: FieldDef[]): { title: string; 
   return [{ title: "Detail", fields }];
 }
 
-export default function ContentEditor({ table, route, label, singular, titleField, fields, initialValues, id, media }: Props) {
+export default function ContentEditor({
+  table,
+  route,
+  label,
+  singular,
+  titleField,
+  fields,
+  initialValues,
+  id,
+  media,
+  initialGallery = [],
+}: Props) {
   const router = useRouter();
   const [values, setValues] = useState<Payload>(() => ({ ...emptyValues(fields), ...initialValues }));
   const [errors, setErrors] = useState<Record<string, string> | undefined>();
   const [message, setMessage] = useState<string | undefined>();
+  const [success, setSuccess] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+
+  // Gallery state for projects
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => initialGallery);
+  const [pendingGallery, setPendingGallery] = useState<string[]>([]);
+  const [galleryDialogOpen, setGalleryDialogOpen] = useState(false);
+
+  const { confirm, dialog } = useConfirmDialog();
 
   function setValue(name: string, value: string) {
     setValues((current) => ({ ...current, [name]: value }));
@@ -69,8 +104,14 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
     setBusy(true);
     setErrors(undefined);
     setMessage(undefined);
+    setSuccess(undefined);
     try {
-      const result = await saveContentAction(table, values, id);
+      const result = await saveContentAction(
+        table,
+        values,
+        id,
+        table === "projects" && !id ? pendingGallery : undefined
+      );
       if (result.ok) {
         router.refresh();
         router.push(route);
@@ -81,6 +122,57 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleAddGallery(selectedPaths: string[]) {
+    if (selectedPaths.length === 0) return;
+
+    if (id) {
+      // Editing existing project: add directly
+      setBusy(true);
+      setMessage(undefined);
+      try {
+        const res = await addMultipleGalleryImagesAction(id, selectedPaths);
+        if (!res.ok) {
+          setMessage(res.message);
+        } else {
+          setSuccess(`${selectedPaths.length} gambar berhasil ditambahkan ke galeri project.`);
+          router.refresh();
+          // Also optimistically update or reload
+          setGalleryItems((prev) => [
+            ...prev,
+            ...selectedPaths.map((p, idx) => ({ id: Date.now() + idx, image: p, caption: "" })),
+          ]);
+        }
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      // Creating new project: add to pending list
+      setPendingGallery((prev) => Array.from(new Set([...prev, ...selectedPaths])));
+      setSuccess(`${selectedPaths.length} gambar dipilih untuk galeri.`);
+    }
+  }
+
+  async function handleRemoveGalleryItem(item: GalleryItem) {
+    if (!id) return;
+    setBusy(true);
+    try {
+      const res = await deleteGalleryImageAction(item.id);
+      if (!res.ok) {
+        setMessage(res.message);
+      } else {
+        setGalleryItems((prev) => prev.filter((i) => i.id !== item.id));
+        setSuccess("Gambar dihapus dari galeri.");
+        router.refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleRemovePendingItem(path: string) {
+    setPendingGallery((prev) => prev.filter((p) => p !== path));
   }
 
   function renderField(field: FieldDef) {
@@ -99,7 +191,7 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
               media={media}
               allowClear={!field.required}
               disabled={busy}
-              emptyHint="Pilih dari pustaka media. Untuk mengunggah gambar baru, buka menu Media."
+              emptyHint="Pilih gambar cover/thumbnail utama. Untuk foto dokumentasi tambahan, gunakan bagian Galeri di bawah."
             />
           ) : field.type === "textarea" ? (
             <textarea
@@ -146,6 +238,8 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
       </div>
 
       {message ? <Banner tone="error">{message}</Banner> : null}
+      {success ? <Banner tone="success">{success}</Banner> : null}
+
       {errors && Object.keys(errors).length ? (
         <Banner tone="error">
           <ul className="list-inside list-disc space-y-0.5">
@@ -159,9 +253,158 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
 
       <form onSubmit={submit} className="space-y-6">
         {sections.map((section) => (
-          <Card key={section.title} title={section.title}>
-            <div className="grid gap-5 lg:grid-cols-2">{section.fields.map(renderField)}</div>
-          </Card>
+          <div key={section.title} className="space-y-6">
+            <Card title={section.title}>
+              <div className="grid gap-5 lg:grid-cols-2">{section.fields.map(renderField)}</div>
+            </Card>
+
+            {/* Special Project Gallery Card: embedded directly in the form */}
+            {table === "projects" && section.title === "Cover / Thumbnail" ? (
+              <Card
+                title="Galeri Dokumentasi Project"
+                description="Foto-foto dokumentasi tambahan di luar cover/thumbnail di atas. Pengunjung situs dapat melihat foto-foto ini dalam lightbox interaktif."
+                actions={
+                  <button
+                    type="button"
+                    onClick={() => setGalleryDialogOpen(true)}
+                    className={btnSecondarySm}
+                  >
+                    + Tambah Foto Galeri
+                  </button>
+                }
+              >
+                {id ? (
+                  // Edit mode: show current project_images
+                  galleryItems.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+                      <p className="text-sm font-semibold text-slate-700">Belum ada foto tambahan di galeri project ini</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Tambahkan beberapa foto dokumentasi acara untuk memperkaya halaman detail project.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setGalleryDialogOpen(true)}
+                        className={`mt-3 ${btnPrimary}`}
+                      >
+                        + Tambah Foto Galeri
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                        {galleryItems.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs"
+                          >
+                            <div className="relative aspect-[4/3] bg-slate-100">
+                              <AdminImagePreview src={item.image} className="h-full w-full" />
+                              <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                                {idx + 1}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  confirm({
+                                    title: "Hapus foto dari galeri?",
+                                    description: "Foto ini akan dihapus dari galeri project (berkas tetap ada di pustaka media).",
+                                    confirmLabel: "Hapus",
+                                    onConfirm: () => handleRemoveGalleryItem(item),
+                                  })
+                                }
+                                className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/90 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-700"
+                                title="Hapus foto ini"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {item.caption ? (
+                              <div className="truncate p-1.5 text-[11px] text-slate-600" title={item.caption}>
+                                {item.caption}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setGalleryDialogOpen(true)}
+                          className={btnSecondarySm}
+                        >
+                          + Tambah Foto Galeri Lainnya
+                        </button>
+                        <Link
+                          href={`/admin/projects/${id}/gallery`}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          Kelola Urutan & Caption Lengkap di Halaman Galeri →
+                        </Link>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  // New project mode: show pendingGallery
+                  pendingGallery.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+                      <p className="text-sm font-semibold text-slate-700">Belum ada foto galeri yang dipilih</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Anda dapat memilih beberapa foto sekaligus dari pustaka media sebelum menyimpan project baru ini.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setGalleryDialogOpen(true)}
+                        className={`mt-3 ${btnPrimary}`}
+                      >
+                        + Tambah Foto Galeri
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                        {pendingGallery.map((path, idx) => (
+                          <div
+                            key={path}
+                            className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs"
+                          >
+                            <div className="relative aspect-[4/3] bg-slate-100">
+                              <AdminImagePreview src={path} className="h-full w-full" />
+                              <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                                {idx + 1}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePendingItem(path)}
+                                className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/90 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-700"
+                                title="Batal pilih foto ini"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="truncate p-1.5 text-[10px] text-slate-400 font-mono" title={path}>
+                              {path}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setGalleryDialogOpen(true)}
+                          className={btnSecondarySm}
+                        >
+                          + Tambah Foto Lainnya
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+              </Card>
+            ) : null}
+          </div>
         ))}
 
         <div className="flex flex-wrap gap-2">
@@ -173,6 +416,18 @@ export default function ContentEditor({ table, route, label, singular, titleFiel
           </Link>
         </div>
       </form>
+
+      {/* Multi-Image Picker Dialog */}
+      <MultiMediaDialog
+        open={galleryDialogOpen}
+        media={media}
+        onSelectMultiple={handleAddGallery}
+        onClose={() => setGalleryDialogOpen(false)}
+        title={`Pilih Foto Galeri: ${values.title || singular}`}
+        confirmLabel="Tambahkan ke Galeri"
+      />
+
+      {dialog}
     </div>
   );
 }
