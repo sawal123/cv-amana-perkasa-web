@@ -1,4 +1,4 @@
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 /**
  * Physical location of runtime media uploads.
@@ -29,24 +29,17 @@ function warnOnce(message: string) {
 /**
  * The directory uploads live in.
  *
- * - `UPLOAD_STORAGE_DIR` set to an absolute path → that directory.
- * - set to anything else (relative, empty, malformed) → falls back to the
- *   deployment directory, but flags the misconfiguration once. Health reports it
- *   as degraded so it cannot pass silently.
- * - unset → `<cwd>/public/uploads`, which is correct for local development and
- *   legacy single-directory deployments.
+ * - `UPLOAD_STORAGE_DIR` set → resolves to that directory (absolute or resolved from cwd).
+ * - unset → `<cwd>/public/uploads`, which is correct for local development.
  */
 export function resolveUploadStorageDir(): string {
   const configured = (process.env.UPLOAD_STORAGE_DIR ?? "").trim();
 
-  if (configured && isAbsolute(configured)) return configured;
-
   if (configured) {
-    warnOnce(
-      `UPLOAD_STORAGE_DIR="${configured}" is not an absolute path; using the deployment directory instead. ` +
-        `Set an absolute, persistent, writable path in production.`,
-    );
-  } else if (process.env.NODE_ENV === "production") {
+    return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
+  }
+
+  if (process.env.NODE_ENV === "production") {
     warnOnce(
       "UPLOAD_STORAGE_DIR is not set; media is stored under <cwd>/public/uploads, " +
         "which a managed redeploy can replace. Set it to a persistent writable directory.",
@@ -77,5 +70,5 @@ export function brochureStoragePath(filename: string): string {
 
 /** True when a persistent directory is configured and usable. */
 export function isUploadStorageConfigured(env: Record<string, string | undefined> = process.env): boolean {
-  return isAbsolute((env.UPLOAD_STORAGE_DIR ?? "").trim());
+  return Boolean((env.UPLOAD_STORAGE_DIR ?? "").trim());
 }
