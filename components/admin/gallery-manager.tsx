@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   addGalleryImageAction,
+  addMultipleGalleryImagesAction,
   deleteGalleryImageAction,
   moveGalleryImageAction,
   updateGalleryCaptionAction,
@@ -12,7 +13,7 @@ import {
 import AdminImagePreview from "./admin-image-preview";
 import { useConfirmDialog } from "./confirm-dialog";
 import { NavIcon } from "./icons";
-import MediaPicker, { type MediaOption } from "./media-picker";
+import MediaPicker, { MultiMediaDialog, type MediaOption } from "./media-picker";
 import { Banner, Card, EmptyState, Field, PageHeader, btnDangerSm, btnIconSm, btnPrimary, btnSecondarySm, inputClass } from "./ui";
 
 type GalleryItem = { id: number; image: string; caption: string };
@@ -29,6 +30,7 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
   const [selected, setSelected] = useState("");
   const [newCaption, setNewCaption] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [multiOpen, setMultiOpen] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -65,6 +67,24 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
     }
   }
 
+  async function handleBatchAdd(paths: string[]) {
+    if (paths.length === 0) return;
+    await run(
+      () => addMultipleGalleryImagesAction(projectId, paths),
+      `${paths.length} gambar berhasil ditambahkan ke galeri.`
+    );
+  }
+
+  const batchAddButton = (
+    <button
+      type="button"
+      onClick={() => setMultiOpen(true)}
+      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-xs transition hover:bg-blue-700"
+    >
+      + Tambah Banyak Foto Sekaligus
+    </button>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -77,7 +97,8 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
         <div className="mt-4">
           <PageHeader
             title={`Galeri: ${projectTitle}`}
-            description="Gambar cover project diatur pada form project. Halaman ini hanya untuk foto tambahan di dalam detail project."
+            description="Gambar cover project diatur pada form project. Halaman ini untuk foto tambahan dokumentasi di dalam detail project."
+            actions={batchAddButton}
           />
         </div>
       </div>
@@ -85,7 +106,7 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
       {message ? <Banner tone="error">{message}</Banner> : null}
       {success ? <Banner tone="success">{success}</Banner> : null}
 
-      <Card title="Tambah gambar" description={`${images.length} gambar di galeri project ini.`}>
+      <Card title="Tambah Satu Foto dengan Caption" description="Atau gunakan tombol di atas untuk memilih banyak foto sekaligus.">
         {media.length === 0 ? (
           <p className="text-sm text-slate-500">
             Pustaka media masih kosong. Unggah gambar di menu{" "}
@@ -112,9 +133,18 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
                 />
               </Field>
 
-              <button type="submit" disabled={busy} className={btnPrimary}>
-                {busy ? "Menyimpan…" : "Tambah ke galeri"}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="submit" disabled={busy} className={btnPrimary}>
+                  {busy ? "Menyimpan…" : "Tambah ke galeri"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMultiOpen(true)}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Pilih banyak foto sekaligus →
+                </button>
+              </div>
             </div>
 
             {selected ? (
@@ -126,12 +156,13 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
         )}
       </Card>
 
-      <Card title="Galeri project">
+      <Card title="Foto Galeri Project" description={`${images.length} foto terpasang di galeri project ini.`}>
         {images.length === 0 ? (
           <EmptyState
             icon="image"
             title="Belum ada gambar galeri"
-            description="Project tanpa galeri tetap tampil normal di situs."
+            description="Klik tombol 'Tambah Banyak Foto Sekaligus' di atas untuk melengkapi dokumentasi project ini."
+            action={batchAddButton}
           />
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -204,6 +235,15 @@ export default function GalleryManager({ projectId, projectTitle, images, media 
           </ul>
         )}
       </Card>
+
+      <MultiMediaDialog
+        open={multiOpen}
+        media={media}
+        onSelectMultiple={handleBatchAdd}
+        onClose={() => setMultiOpen(false)}
+        title={`Pilih Foto Galeri: ${projectTitle}`}
+        confirmLabel="Tambahkan ke Galeri"
+      />
 
       {dialog}
     </div>

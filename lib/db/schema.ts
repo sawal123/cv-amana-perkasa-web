@@ -196,6 +196,7 @@ export const media = mysqlTable("media", {
   mime: varchar("mime", { length: 80 }).notNull(),
   size: int("size", { unsigned: true }).notNull().default(0),
   alt: varchar("alt", { length: 255 }).notNull().default(""),
+  groupName: varchar("group_name", { length: 100 }).notNull().default("Umum"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 

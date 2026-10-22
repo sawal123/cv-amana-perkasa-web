@@ -93,6 +93,41 @@ export async function addGalleryImage(
   return { ok: true };
 }
 
+export async function addGalleryImages(
+  projectId: number,
+  items: Array<{ image: string; caption?: string }>,
+): Promise<GalleryResult> {
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return { ok: false, error: "Project tidak valid." };
+  }
+  if (items.length === 0) return { ok: true };
+
+  if (!(await projectExists(projectId))) {
+    return { ok: false, error: "Project tidak ditemukan." };
+  }
+
+  let pos = await nextPosition(projectId);
+  const rows: Array<{ projectId: number; image: string; caption: string; position: number }> = [];
+  for (const item of items) {
+    const path = item.image.trim();
+    if (!SAFE_UPLOAD_PATH.test(path)) continue;
+    if (!(await mediaExists(path))) continue;
+    rows.push({
+      projectId,
+      image: path,
+      caption: normaliseCaption(item.caption ?? ""),
+      position: pos++,
+    });
+  }
+
+  if (rows.length > 0) {
+    await getDb().insert(projectImages).values(rows);
+  }
+
+  return { ok: true };
+}
+
+
 export async function setGalleryCaption(id: number, caption: string): Promise<GalleryResult> {
   const updated = await getDb()
     .update(projectImages)

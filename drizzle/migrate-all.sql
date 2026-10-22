@@ -206,3 +206,10 @@ CREATE TABLE IF NOT EXISTS`brochures` (
 	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `brochures_id` PRIMARY KEY(`id`)
 );
+
+-- 0005_media_group.sql
+SET @ddl_6 := IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media' AND COLUMN_NAME = 'group_name') = 0, 'ALTER TABLE `media` ADD `group_name` varchar(100) DEFAULT ''Umum'' NOT NULL', 'DO 0');
+PREPARE ddl_6 FROM @ddl_6;
+EXECUTE ddl_6;
+DEALLOCATE PREPARE ddl_6;;
+

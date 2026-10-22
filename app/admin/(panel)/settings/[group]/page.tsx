@@ -48,7 +48,12 @@ export default async function SettingsGroupPage({ params }: { params: Promise<{ 
         label={tab.label}
         fields={tab.fields}
         values={values}
-        media={media.map((item) => ({ path: item.path, alt: item.alt, filename: item.filename }))}
+        media={media.map((item) => ({
+          path: item.path,
+          alt: item.alt,
+          filename: item.filename,
+          groupName: item.groupName,
+        }))}
       />
     </div>
   );

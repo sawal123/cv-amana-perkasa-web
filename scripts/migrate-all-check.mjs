@@ -146,6 +146,7 @@ async function verifySchema(connection, label) {
   check(`${label}: testimonials ada`, await hasTable(connection, "testimonials"));
   check(`${label}: brochures ada`, await hasTable(connection, "brochures"));
   check(`${label}: brochures.stored_name ada`, await exists(connection, "brochures", "stored_name"));
+  check(`${label}: media.group_name ada`, await exists(connection, "media", "group_name"));
   check(`${label}: media.width sudah tidak ada`, !(await exists(connection, "media", "width")));
 }
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { resolveUploadStorageDir, uploadPath } from "@/lib/upload-storage";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   clientsPartners,
@@ -63,6 +63,7 @@ export type MediaItem = {
   mime: string;
   size: number;
   alt: string;
+  groupName: string;
 };
 
 export async function listMedia(): Promise<MediaItem[]> {
@@ -74,12 +75,13 @@ export async function listMedia(): Promise<MediaItem[]> {
     mime: row.mime,
     size: row.size,
     alt: row.alt,
+    groupName: row.groupName || "Umum",
   }));
 }
 
 export type UploadResult = { ok: true; item: MediaItem } | { ok: false; error: string };
 
-export async function saveUpload(file: File, alt: string): Promise<UploadResult> {
+export async function saveUpload(file: File, alt: string, groupName?: string): Promise<UploadResult> {
   if (!file || typeof file.arrayBuffer !== "function") {
     return { ok: false, error: "File tidak terbaca." };
   }
@@ -106,6 +108,7 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
   await mkdir(dir, { recursive: true });
   await writeFile(target, buffer, { flag: "wx" });
 
+  const cleanGroup = (groupName ?? "").trim().slice(0, 100) || "Umum";
   const db = getDb();
   await db.insert(mediaTable).values({
     // Stored for reference only; the path above is derived from a UUID.
@@ -114,6 +117,7 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
     mime: signature.mime,
     size: buffer.length,
     alt: alt.trim().slice(0, 255),
+    groupName: cleanGroup,
   });
 
   // Read the row back instead of using INSERT ... RETURNING: that syntax is
@@ -131,6 +135,7 @@ export async function saveUpload(file: File, alt: string): Promise<UploadResult>
       mime: item.mime,
       size: item.size,
       alt: item.alt,
+      groupName: item.groupName || cleanGroup,
     },
   };
 }
@@ -223,3 +228,15 @@ export async function removeMedia(id: number): Promise<RemoveResult> {
 export async function setMediaAlt(id: number, alt: string): Promise<void> {
   await getDb().update(mediaTable).set({ alt: alt.trim().slice(0, 255) }).where(eq(mediaTable.id, id));
 }
+
+export async function updateMediaGroup(id: number, groupName: string): Promise<void> {
+  const clean = groupName.trim().slice(0, 100) || "Umum";
+  await getDb().update(mediaTable).set({ groupName: clean }).where(eq(mediaTable.id, id));
+}
+
+export async function batchUpdateMediaGroup(ids: number[], groupName: string): Promise<void> {
+  if (ids.length === 0) return;
+  const clean = groupName.trim().slice(0, 100) || "Umum";
+  await getDb().update(mediaTable).set({ groupName: clean }).where(inArray(mediaTable.id, ids));
+}
+

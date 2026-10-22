@@ -160,6 +160,7 @@ async function verifySchema(connection, label) {
   check(`${label}: projects.objective ada`, await exists(connection, "projects", "objective"));
   check(`${label}: projects.approach ada`, await exists(connection, "projects", "approach"));
   check(`${label}: projects.outcome ada`, await exists(connection, "projects", "outcome"));
+  check(`${label}: media.group_name ada`, await exists(connection, "media", "group_name"));
   check(`${label}: media.width sudah tidak ada`, !(await exists(connection, "media", "width")));
   check(`${label}: media.height sudah tidak ada`, !(await exists(connection, "media", "height")));
 }
