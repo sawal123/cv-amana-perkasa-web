@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { parseSiteOrigin } from "@/lib/site-url";
@@ -9,11 +9,21 @@ import { isUploadStorageConfigured, resolveUploadStorageDir } from "@/lib/upload
  * Readiness probe logic, kept out of the route handler so each piece can be
  * exercised directly (including negative cases) without booting a server.
  *
- * Nothing here returns a secret value: the caller only ever sees booleans.
+ * Nothing here returns a secret value: the caller only ever sees booleans and
+ * storage directory diagnostics.
  */
 
 export type HealthCheck = { name: string; ok: boolean };
-export type HealthResult = { status: "ok" | "degraded"; checks: Record<string, boolean> };
+export type HealthResult = {
+  status: "ok" | "degraded";
+  checks: Record<string, boolean>;
+  storage?: {
+    resolvedDir: string;
+    configuredEnv: string;
+    fileCount: number;
+    sampleFiles: string[];
+  };
+};
 
 /** Release-critical tables. A missing one means the deployment is not migrated. */
 export const REQUIRED_TABLES = [
@@ -138,5 +148,26 @@ export async function runHealthChecks(
   const record: Record<string, boolean> = {};
   for (const check of checks) record[check.name] = check.ok;
 
-  return { status: checks.every((check) => check.ok) ? "ok" : "degraded", checks: record };
+  const storageDir = resolveUploadStorageDir();
+  let fileCount = 0;
+  let sampleFiles: string[] = [];
+  try {
+    const list = await readdir(storageDir);
+    fileCount = list.length;
+    sampleFiles = list.slice(0, 5);
+  } catch {
+    // Directory might not exist yet
+  }
+
+  return {
+    status: checks.every((check) => check.ok) ? "ok" : "degraded",
+    checks: record,
+    storage: {
+      resolvedDir: storageDir,
+      configuredEnv: env.UPLOAD_STORAGE_DIR ?? "",
+      fileCount,
+      sampleFiles,
+    },
+  };
 }
+
